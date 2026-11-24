@@ -133,6 +133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 switch action {
                 case .selection: await self.coordinator.handleSelection()
                 case .ocr: await self.coordinator.handleOCR()
+                case .input: self.coordinator.handleInput()
                 }
             }
         }
@@ -141,7 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let notice = hotkeyService.conflictMessage {
             let bindings = settingsStore.current.hotkeys
             menuBar.setHotkeyNotice(
-                "⚠️ 快捷键已调整：划词 \(bindings.selection.displayString) · OCR \(bindings.ocr.displayString)"
+                "⚠️ 快捷键已调整：划词 \(bindings.selection.displayString) · OCR \(bindings.ocr.displayString) · 输入 \(bindings.input.displayString)"
             )
             UserDefaults.standard.set(notice, forKey: "MacTranslator.HotkeyNotice")
         } else {
@@ -154,6 +155,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         menuBar.onOCR = { [weak self] in
             Task { await self?.coordinator.handleOCR() }
+        }
+        menuBar.onInput = { [weak self] in
+            self?.coordinator.handleInput()
         }
         menuBar.onHistory = { [weak self] in
             self?.historyWindow.show()

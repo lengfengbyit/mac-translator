@@ -1,12 +1,13 @@
 import Foundation
 import SwiftUI
 
-/// Composition of selection/OCR -> gateway -> floating result -> history.
+/// Composition of selection/OCR/typed input -> gateway -> floating result -> history.
 @MainActor
 final class AppCoordinator {
     private enum LastAction {
         case selection
         case ocr
+        case input
     }
 
     private let gateway: LLMProviding
@@ -44,6 +45,9 @@ final class AppCoordinator {
         resultWindow.onRetranslate = { [weak self] in
             Task { await self?.retranslate() }
         }
+        resultWindow.onSubmitInput = { [weak self] text in
+            Task { await self?.submitInput(text) }
+        }
     }
 
     // MARK: Entry points
@@ -56,13 +60,27 @@ final class AppCoordinator {
         await handleOCR(forceFresh: false)
     }
 
+    /// Opens the result window in typing mode. No permission or selection is
+    /// needed: the panel becomes key so the editable source card can receive
+    /// keystrokes, then Enter submits through the normal translation pipeline.
+    func handleInput() {
+        resultWindow.showInput()
+    }
+
+    func submitInput(_ text: String) async {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let request = makeRequest(text: trimmed, sourceType: .input, forceFresh: false)
+        await execute(request, clipboardFallback: false, action: .input)
+    }
+
     func retranslate() async {
         guard let lastRequest, let lastAction else { return }
         switch lastAction {
-        case .selection:
+        case .selection, .input:
             var request = lastRequest
             request.forceFresh = true
-            await execute(request, clipboardFallback: false, action: .selection)
+            await execute(request, clipboardFallback: false, action: lastAction)
         case .ocr:
             await handleOCR(forceFresh: true)
         }
@@ -115,10 +133,13 @@ final class AppCoordinator {
     }
 
     private func handleSelection(forceFresh: Bool) async {
+        // A selection hotkey pressed while the input card is open switches the
+        // panel back to a non-focus-stealing, read-only result window.
+        resultWindow.endInputMode()
         resultWindow.showProgress("正在获取选中文本…")
         let selection = await selector.selectText()
         guard !selection.isEmpty else {
-            resultWindow.showError("无法获取选中文本，请尝试 OCR 翻译")
+            resultWindow.showError("无法获取选中文本，请尝试 OCR 翻译或输入翻译")
             return
         }
         let request = makeRequest(

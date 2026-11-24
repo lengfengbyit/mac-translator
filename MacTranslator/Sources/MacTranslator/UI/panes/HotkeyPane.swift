@@ -28,6 +28,15 @@ struct HotkeyPane: View {
                 }
                 .frame(height: 56)
 
+                HotkeyRecorder(
+                    title: "输入翻译",
+                    detail: "打开输入框，输入文字后按回车翻译",
+                    binding: vm.settings.hotkeys.input
+                ) { binding in
+                    vm.updateHotkey(binding, for: .input)
+                }
+                .frame(height: 56)
+
                 if let conflict = vm.hotkeyConflict {
                     Text(conflict)
                         .font(.system(size: 11.5))

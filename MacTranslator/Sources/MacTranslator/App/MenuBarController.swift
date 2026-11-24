@@ -8,6 +8,7 @@ final class MenuBarController: NSObject {
 
     var onSelection: (() -> Void)?
     var onOCR: (() -> Void)?
+    var onInput: (() -> Void)?
     var onHistory: (() -> Void)?
     var onSettings: (() -> Void)?
     var onQuit: (() -> Void)?
@@ -40,6 +41,11 @@ final class MenuBarController: NSObject {
         ocr.keyEquivalentModifierMask = [.option, .shift]
         ocr.target = self
         ocr.tag = 2
+
+        let input = menu.addItem(withTitle: "输入翻译", action: #selector(inputTranslate(_:)), keyEquivalent: "i")
+        input.keyEquivalentModifierMask = [.option, .shift]
+        input.target = self
+        input.tag = 3
 
         menu.addItem(NSMenuItem.separator())
 
@@ -93,6 +99,10 @@ final class MenuBarController: NSObject {
 
     @objc private func ocrTranslate(_ sender: NSMenuItem) {
         onOCR?()
+    }
+
+    @objc private func inputTranslate(_ sender: NSMenuItem) {
+        onInput?()
     }
 
     @objc private func openHistory(_ sender: NSMenuItem) {

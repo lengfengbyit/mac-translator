@@ -7,7 +7,11 @@ import AppKit
 /// false, and `.fullSizeContentView` lets the SwiftUI hosting view cover the
 /// titlebar. We render our own close button and drag handle in SwiftUI instead.
 final class BasePanel: NSPanel {
-    override var canBecomeKey: Bool { false }
+    /// Typing requires a key window. This stays OFF for selection/OCR results
+    /// so the panel never steals focus from the frontmost app; the input mode
+    /// turns it on while its editable source card is visible.
+    var allowsKeyboardInput = false
+    override var canBecomeKey: Bool { allowsKeyboardInput }
     override var canBecomeMain: Bool { false }
 
     init(contentRect: NSRect) {

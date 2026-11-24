@@ -31,7 +31,12 @@ final class ResultViewModel: ObservableObject {
     @Published var showsPermissionAction = false
     @Published var sourceLanguageLabel = "自动检测"
     @Published var targetLanguageLabel = "简体中文"
+    @Published var inputMode = false
+    @Published var inputText = ""
     var onClose: (() -> Void)?
+    func startInputAction() {}
+    func submitInput(_ text: String) {}
+    func endInputMode() { inputMode = false }
     func copyAction() {}
     func copyOriginalAction() {}
     func favoriteAction() {}

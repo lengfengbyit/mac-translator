@@ -13,6 +13,10 @@ struct HotkeyBinding: Codable, Equatable {
         keyCode: 1,   // kVK_ANSI_S
         modifiers: 2048 | 512  // optionKey | shiftKey
     )
+    static let inputDefault = HotkeyBinding(
+        keyCode: 34,  // kVK_ANSI_I
+        modifiers: 2048 | 512  // optionKey | shiftKey -> ⌥⇧I
+    )
 
     /// Human readable form, e.g. "⌥⇧S".
     var displayString: String {
@@ -37,15 +41,48 @@ struct HotkeyBinding: Codable, Equatable {
     }
 }
 
-/// Both configurable hotkeys.
+/// All configurable hotkeys. Decoding is tolerant on purpose: settings.json
+/// written by an older build has no `input` key, and a strict synthesized
+/// decoder would throw, discard the WHOLE AppSettings (including API keys)
+/// and silently reset the user's configuration.
 struct HotkeyBindings: Codable, Equatable {
     var selection: HotkeyBinding
     var ocr: HotkeyBinding
+    var input: HotkeyBinding
 
     static let `default` = HotkeyBindings(
         selection: .selectionDefault,
-        ocr: .ocrDefault
+        ocr: .ocrDefault,
+        input: .inputDefault
     )
+
+    init(
+        selection: HotkeyBinding = .selectionDefault,
+        ocr: HotkeyBinding = .ocrDefault,
+        input: HotkeyBinding = .inputDefault
+    ) {
+        self.selection = selection
+        self.ocr = ocr
+        self.input = input
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case selection, ocr, input
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        selection = try c.decodeIfPresent(HotkeyBinding.self, forKey: .selection) ?? .selectionDefault
+        ocr = try c.decodeIfPresent(HotkeyBinding.self, forKey: .ocr) ?? .ocrDefault
+        input = try c.decodeIfPresent(HotkeyBinding.self, forKey: .input) ?? .inputDefault
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(selection, forKey: .selection)
+        try c.encode(ocr, forKey: .ocr)
+        try c.encode(input, forKey: .input)
+    }
 }
 
 /// Application-wide configuration. Persisted as JSON by SettingsStore.

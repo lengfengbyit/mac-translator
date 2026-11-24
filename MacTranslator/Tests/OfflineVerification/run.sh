@@ -143,3 +143,37 @@ if [ $? -ne 0 ]; then
 fi
 
 "$VOICE_PROBE_OUT" || exit 1
+
+# ===== 输入翻译验证（源码契约 + 旧 settings.json 真实解码）=====
+INPUT_OUT="/tmp/qa_input_translate_verification"
+swiftc -target x86_64-apple-macosx13.0 \
+  "$SRC/Core/Models/Enums.swift" \
+  "$SRC/Core/Models/SpeechVoiceFamily.swift" \
+  "$SRC/Core/Models/LLMInterface.swift" \
+  "$SRC/Core/Models/AppSettings.swift" \
+  "Tests/OfflineVerification/InputTranslateVerification.swift" \
+  -o "$INPUT_OUT"
+
+if [ $? -ne 0 ]; then
+  echo "输入翻译验证编译失败"
+  exit 1
+fi
+
+"$INPUT_OUT" "$PWD" || exit 1
+
+# ===== 输入翻译真机键盘探针（焦点 / 回车 / 输入法组合态）=====
+INPUT_PROBE_OUT="/tmp/qa_input_focus_panel_probe"
+swiftc -parse-as-library -target x86_64-apple-macosx13.0 \
+  -framework AppKit \
+  -framework SwiftUI \
+  "$SRC/UI/Windows/BasePanel.swift" \
+  "$SRC/UI/Views/ResultView.swift" \
+  "Tests/OfflineVerification/InputFocusPanelProbe.swift" \
+  -o "$INPUT_PROBE_OUT"
+
+if [ $? -ne 0 ]; then
+  echo "输入焦点探针编译失败"
+  exit 1
+fi
+
+"$INPUT_PROBE_OUT" || exit 1

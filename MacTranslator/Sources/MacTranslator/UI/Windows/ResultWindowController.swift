@@ -3,7 +3,7 @@ import Foundation
 import SwiftUI
 
 /// Hosting view that accepts the very first click even though the owning panel
-/// never becomes key (so the custom close button always works on first press).
+/// normally never becomes key (so the custom close button always works on first press).
 private final class ResultHostingView: NSHostingView<ResultView> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
@@ -19,6 +19,8 @@ final class ResultWindowController {
     var onToggleFavorite: ((UUID) -> Void)?
     /// Set by the coordinator to re-run the last request.
     var onRetranslate: (() -> Void)?
+    /// Enter / "翻译" in the editable source card.
+    var onSubmitInput: ((String) -> Void)?
 
     private var escapeMonitor: Any?
     private var outsideClickMonitor: Any?
@@ -85,6 +87,16 @@ final class ResultWindowController {
                 NSWorkspace.shared.open(url)
             }
         }
+        viewModel.onSubmitInput = { [weak self] text in
+            self?.onSubmitInput?(text)
+        }
+        // The toolbar keyboard icon is local to this window: it carries an
+        // existing original into the editor so a typo can be fixed in place.
+        viewModel.onStartInput = { [weak self] in
+            guard let self else { return }
+            let original = self.viewModel.result?.original ?? ""
+            self.showInput(initialText: original == "[图片]" ? "" : original)
+        }
 
         // Defer the resize to the next run-loop turn: updating @Published
         // values synchronously from inside a SwiftUI render is not allowed.
@@ -122,6 +134,28 @@ final class ResultWindowController {
         present()
     }
 
+    /// Opens the editable source card. This is the ONLY path that turns on
+    /// `canBecomeKey` and makes the window key: typing needs a key window,
+    /// while selection/OCR results must never steal focus from another app.
+    func showInput(initialText: String = "") {
+        let settings = settingsStore.current
+        viewModel.sourceLanguageLabel = settings.sourceAutoDetect ? "自动检测" : settings.sourceLanguage
+        viewModel.targetLanguageLabel = settings.targetLanguage
+        viewModel.showInput(initialText: initialText)
+        panel.allowsKeyboardInput = true
+        present()
+        panel.makeKeyAndOrderFront(nil)
+        focusInputEditor()
+    }
+
+    /// Leaves typing mode without hiding the window (a selection hotkey may
+    /// be about to show its own progress/result in the same panel).
+    func endInputMode() {
+        guard viewModel.inputMode else { return }
+        viewModel.endInputMode()
+        panel.allowsKeyboardInput = false
+    }
+
     func showError(_ message: String, needsPermissionSettings: Bool = false) {
         viewModel.showError(message, needsPermissionSettings: needsPermissionSettings)
         present()
@@ -136,7 +170,24 @@ final class ResultWindowController {
 
     func close() {
         panel.orderOut(nil)
+        panel.allowsKeyboardInput = false
         viewModel.clear()
+    }
+
+    /// SwiftUI mounts the NSTextView one or more run-loop turns after the
+    /// view hierarchy changes, so retry briefly instead of assuming it exists.
+    private func focusInputEditor(attemptsLeft: Int = 10) {
+        Task { @MainActor in
+            guard self.viewModel.inputMode, self.panel.isVisible else { return }
+            if let textView = InputEditorRegistry.shared.textView,
+               textView.window === self.panel {
+                self.panel.makeFirstResponder(textView)
+                return
+            }
+            guard attemptsLeft > 0 else { return }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            self.focusInputEditor(attemptsLeft: attemptsLeft - 1)
+        }
     }
 
     // MARK: Presentation
@@ -229,6 +280,12 @@ final class ResultWindowController {
     private func installMonitors() {
         escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard event.keyCode == 53 else { return event } // Escape
+            // An active IME uses Escape to dismiss its candidate list. Closing
+            // the whole window there would throw away the half-typed sentence.
+            if let textView = self?.panel.firstResponder as? NSTextView,
+               textView.hasMarkedText() {
+                return event
+            }
             Task { @MainActor in self?.close() }
             return nil
         }

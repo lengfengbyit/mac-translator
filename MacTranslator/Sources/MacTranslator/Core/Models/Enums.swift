@@ -28,6 +28,8 @@ enum OCRMode: String, Codable, CaseIterable, Identifiable {
 enum SourceType: String, Codable, CaseIterable, Identifiable {
     case selection
     case ocr
+    /// Text typed into the result window's editable source card.
+    case input
 
     var id: String { rawValue }
 
@@ -35,6 +37,7 @@ enum SourceType: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .selection: return "划词"
         case .ocr: return "OCR"
+        case .input: return "输入"
         }
     }
 }

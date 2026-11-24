@@ -60,8 +60,9 @@ r.check(fromLegacy.resultOpacity == 1.0, "A7 旧配置文件缺字段时回落�
 let panelSrc = source(root, "\(base)/UI/Windows/BasePanel.swift")
 r.check(panelSrc.contains("styleMask: [.borderless, .nonactivatingPanel]"),
         "B1 结果窗为 borderless + nonactivatingPanel（去掉失效的系统交通灯）")
-r.check(panelSrc.contains("override var canBecomeKey: Bool { false }"),
-        "B2 保持 canBecomeKey=false（不抢前台焦点）")
+r.check(panelSrc.contains("var allowsKeyboardInput = false") &&
+        panelSrc.contains("override var canBecomeKey: Bool { allowsKeyboardInput }"),
+        "B2 默认不抢前台焦点，仅输入模式按需成为 key window")
 r.check(panelSrc.contains("isReleasedWhenClosed = false"),
         "B3 保留窗口生命周期修复（isReleasedWhenClosed=false）")
 r.check(panelSrc.contains("isMovableByWindowBackground = false"),

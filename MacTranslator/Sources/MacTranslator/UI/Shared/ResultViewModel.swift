@@ -19,6 +19,13 @@ final class ResultViewModel: ObservableObject {
     @Published var sourceLanguageLabel = "自动检测"
     @Published var targetLanguageLabel = AppSettings.defaultTargetLanguage
 
+    /// When true, the top card is an editable text view and the window is
+    /// allowed to become key. Progress / error / translation states keep this
+    /// flag, so a failed request never throws away what the user typed.
+    @Published var inputMode = false
+    /// Last submitted text; also used to seed the editor when re-opening.
+    @Published var inputText = ""
+
     /// ID of the history record produced by this result, used by the favorite toggle.
     private(set) var recordID: UUID?
 
@@ -33,6 +40,10 @@ final class ResultViewModel: ObservableObject {
     var onClose: (() -> Void)?
     var onPinChange: ((Bool) -> Void)?
     var onOpenPermissionSettings: (() -> Void)?
+    /// Enter in the editable source card, or the "翻译" button.
+    var onSubmitInput: ((String) -> Void)?
+    /// Toolbar keyboard icon: switch an existing result into typing mode.
+    var onStartInput: (() -> Void)?
 
     func show(
         _ result: TranslationResult,
@@ -64,6 +75,42 @@ final class ResultViewModel: ObservableObject {
         showsPermissionAction = needsPermissionSettings
     }
 
+    /// Opens (or re-opens) the editable card. `initialText` lets the toolbar
+    /// carry an existing original into the editor for a quick correction.
+    func showInput(initialText: String = "") {
+        result = nil
+        errorMessage = nil
+        progressText = nil
+        clipboardWarning = ""
+        showsPermissionAction = false
+        isCollapsed = false
+        isFavorite = false
+        recordID = nil
+        inputMode = true
+        inputText = initialText
+    }
+
+    /// Leaves typing mode without closing the window, e.g. when a selection
+    /// hotkey fires while the input card is open.
+    func endInputMode() {
+        inputMode = false
+        inputText = ""
+    }
+
+    func submitInput(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            toastMessage = "请先输入要翻译的文字"
+            return
+        }
+        inputText = trimmed
+        onSubmitInput?(trimmed)
+    }
+
+    func startInputAction() {
+        onStartInput?()
+    }
+
     func clear() {
         result = nil
         errorMessage = nil
@@ -73,6 +120,8 @@ final class ResultViewModel: ObservableObject {
         isCollapsed = false
         showsPermissionAction = false
         recordID = nil
+        inputMode = false
+        inputText = ""
         // isPinned deliberately survives: it is a window-level preference,
         // not a property of one translation result.
     }

@@ -6,11 +6,13 @@ import Foundation
 enum HotkeyAction: UInt32 {
     case selection = 1
     case ocr = 2
+    case input = 3
 
     var label: String {
         switch self {
         case .selection: return "划词翻译"
         case .ocr: return "OCR 翻译"
+        case .input: return "输入翻译"
         }
     }
 }
@@ -51,6 +53,7 @@ final class HotkeyService {
     private let settingsStore: SettingsStoring
     private var selectionRef: EventHotKeyRef?
     private var ocrRef: EventHotKeyRef?
+    private var inputRef: EventHotKeyRef?
     private var handlerInstalled = false
 
     /// Set by the composition root; receives actions on the main queue.
@@ -73,6 +76,11 @@ final class HotkeyService {
             HotkeyBinding(keyCode: 0, modifiers: 2048 | 512),   // ⌥⇧A
             HotkeyBinding(keyCode: 1, modifiers: 4096 | 2048),  // ⌘⌥S
             HotkeyBinding(keyCode: 3, modifiers: 2048 | 512)    // ⌥⇧F
+        ],
+        .input: [
+            HotkeyBinding(keyCode: 32, modifiers: 2048 | 512),  // ⌥⇧U
+            HotkeyBinding(keyCode: 31, modifiers: 2048 | 512),  // ⌥⇧O
+            HotkeyBinding(keyCode: 34, modifiers: 4096 | 2048)  // ⌘⌥I
         ]
     ]
 
@@ -96,6 +104,7 @@ final class HotkeyService {
         let configured = settingsStore.current.hotkeys
         var selection = configured.selection
         var ocr = configured.ocr
+        var input = configured.input
         var adjustments: [String] = []
 
         let selectionOK = registerWithFallback(
@@ -104,6 +113,9 @@ final class HotkeyService {
         let ocrOK = registerWithFallback(
             action: .ocr, preferred: &ocr, ref: &ocrRef, log: &adjustments
         )
+        let inputOK = registerWithFallback(
+            action: .input, preferred: &input, ref: &inputRef, log: &adjustments
+        )
 
         if !adjustments.isEmpty {
             // Persist what actually works so the Settings pane shows the truth
@@ -111,16 +123,18 @@ final class HotkeyService {
             var updated = settingsStore.current
             updated.hotkeys.selection = selection
             updated.hotkeys.ocr = ocr
+            updated.hotkeys.input = input
             try? settingsStore.update(updated)
             conflictMessage = "快捷键被其他 App 占用，已自动切换：\(adjustments.joined(separator: "；"))。可在「设置 › 快捷键」中修改。"
         }
 
-        return selectionOK && ocrOK
+        return selectionOK && ocrOK && inputOK
     }
 
     func unregister() {
         unregisterRef(&selectionRef)
         unregisterRef(&ocrRef)
+        unregisterRef(&inputRef)
         HotkeyDispatcher.shared.handler = nil
     }
 

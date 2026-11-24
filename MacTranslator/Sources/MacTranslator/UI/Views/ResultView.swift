@@ -41,6 +41,132 @@ extension Notification.Name {
     static let resultPanelResetPosition = Notification.Name("MacTranslatorResultPanelResetPosition")
 }
 
+// MARK: - Editable source card (typed-input mode)
+
+/// The controller needs to make the AppKit text view first responder after the
+/// SwiftUI hierarchy has mounted. A weak registry avoids forcing a hosting
+/// controller into the panel just for focus handling.
+@MainActor
+final class InputEditorRegistry {
+    static let shared = InputEditorRegistry()
+    weak var textView: NSTextView?
+    private init() {}
+}
+
+/// NSTextView with a deliberate Enter contract:
+///   • Return            -> submit (unless an IME is composing candidates)
+///   • Shift + Return    -> insert a real newline
+///   • everything else   -> stock AppKit editing (⌘V / ⌘A / Delete all work)
+///
+/// SwiftUI's TextEditor cannot express "Return submits but marked text does
+/// not", which is why this is AppKit-backed.
+/// Kept internal (not private) so the offline focus probe can drive real
+/// Return / Shift+Return / IME-composition events through it.
+final class SubmitTextView: NSTextView {
+    var onSubmit: ((String) -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        // With a Chinese/Japanese IME, Return confirms the candidate word.
+        // Submitting here would translate half-finished pinyin every time.
+        if hasMarkedText() {
+            super.keyDown(with: event)
+            return
+        }
+        if event.keyCode == 36 { // kVK_Return
+            if event.modifierFlags.contains(.shift) {
+                insertText("\n", replacementRange: selectedRange())
+            } else {
+                onSubmit?(string)
+            }
+            return
+        }
+        super.keyDown(with: event)
+    }
+
+    override func doCommand(by selector: Selector) {
+        // Some input methods route Return through the command dispatcher.
+        if selector == NSSelectorFromString("insertNewline:") {
+            if hasMarkedText() {
+                super.doCommand(by: selector)
+            } else {
+                onSubmit?(string)
+            }
+            return
+        }
+        super.doCommand(by: selector)
+    }
+}
+
+/// Wraps an NSScrollView + NSTextView. The draft text lives in AppKit and is
+/// only pushed into SwiftUI on submit, so typing never re-renders the whole
+/// card stack (the original settings-input bug was a per-keystroke redraw).
+struct InputEditor: NSViewRepresentable {
+    let initialText: String
+    let onSubmit: (String) -> Void
+
+    final class Coordinator {
+        var lastProgrammaticText: String?
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = false
+        scroll.hasHorizontalScroller = false
+        scroll.autohidesScrollers = true
+        scroll.drawsBackground = false
+        scroll.borderType = .noBorder
+
+        let textView = SubmitTextView(frame: NSRect(x: 0, y: 0, width: 380, height: 72))
+        textView.isEditable = true
+        textView.isSelectable = true
+        textView.isRichText = false
+        textView.importsGraphics = false
+        textView.allowsUndo = true
+        textView.font = NSFont.systemFont(ofSize: 14)
+        textView.textColor = .labelColor
+        textView.backgroundColor = .clear
+        textView.drawsBackground = false
+        textView.textContainerInset = NSSize(width: 0, height: 2)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.minSize = .zero
+        textView.maxSize = NSSize(
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
+        // A translator should receive exactly what was typed, not smart
+        // quotes, autocorrect or auto-dashes.
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.isAutomaticSpellingCorrectionEnabled = false
+        textView.isContinuousSpellCheckingEnabled = false
+        textView.string = initialText
+        textView.onSubmit = onSubmit
+        scroll.documentView = textView
+
+        InputEditorRegistry.shared.textView = textView
+        context.coordinator.lastProgrammaticText = initialText
+        return scroll
+    }
+
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
+        guard let textView = scroll.documentView as? SubmitTextView else { return }
+        textView.onSubmit = onSubmit
+        InputEditorRegistry.shared.textView = textView
+        if initialText != context.coordinator.lastProgrammaticText {
+            context.coordinator.lastProgrammaticText = initialText
+            if textView.string != initialText {
+                textView.string = initialText
+            }
+        }
+    }
+}
+
 /// Native title bar for the result window: a real close hit area plus a
 /// classic drag loop. Everything here is AppKit, so clicks never depend on
 /// SwiftUI gesture delivery inside a non-activating panel.
@@ -161,6 +287,8 @@ struct ResultTitleBar: NSViewRepresentable {
 /// Card-based result window, modelled on Bob: a compact toolbar, a source
 /// card, a language bar and a translation card. The panel grows and shrinks
 /// with the cards, so short results no longer sit on top of 300 px of nothing.
+/// In typed-input mode the read-only source card is swapped for an editable
+/// one; the translation card, language bar and toolbar are reused as-is.
 struct ResultView: View {
     @ObservedObject var vm: ResultViewModel
     @ObservedObject var appearance: ResultAppearance
@@ -249,18 +377,30 @@ struct ResultView: View {
                 enabled: vm.result != nil,
                 help: "重新翻译"
             ) { vm.retranslateAction() }
+            toolButton(
+                "keyboard",
+                active: vm.inputMode,
+                help: "输入翻译（打开输入框）"
+            ) { vm.startInputAction() }
             Spacer(minLength: 4)
                 .allowsHitTesting(false)
-            if let result = vm.result {
+            if vm.inputMode {
+                Text("⌨ 输入")
+                    .font(.system(size: 10.5))
+                    .foregroundColor(.secondary)
+                    .allowsHitTesting(false)
+            } else if let result = vm.result {
                 Text(result.sourceType == .ocr ? "🔍 OCR" : "✂️ 划词")
                     .font(.system(size: 10.5))
                     .foregroundColor(.secondary)
                     .allowsHitTesting(false)
             }
-            Text("拖动移动")
-                .font(.system(size: 10))
-                .foregroundColor(.secondary)
-                .allowsHitTesting(false)
+            if !vm.inputMode {
+                Text("拖动移动")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .allowsHitTesting(false)
+            }
         }
         .padding(.horizontal, 12)
     }
@@ -292,12 +432,19 @@ struct ResultView: View {
     @ViewBuilder
     private var contentStack: some View {
         VStack(alignment: .leading, spacing: 10) {
+            // The editable card stays on screen during progress / error / result
+            // states, so a failed request never discards the typed text.
+            if vm.inputMode {
+                inputCard
+            }
             if let progress = vm.progressText {
                 statusCard(text: progress, showsProgress: true)
             } else if let error = vm.errorMessage {
                 errorCard(error)
             } else if let result = vm.result {
-                sourceCard(result.original)
+                if !vm.inputMode {
+                    sourceCard(result.original)
+                }
                 languageBar
                 translationCard(result)
                 if !vm.clipboardWarning.isEmpty {
@@ -305,8 +452,11 @@ struct ResultView: View {
                         .font(.system(size: 10.5))
                         .foregroundColor(.orange)
                 }
-            } else {
-                statusCard(text: "按 ⌥D 划词翻译，或 ⌥⇧S 截图 OCR", showsProgress: false)
+            } else if !vm.inputMode {
+                statusCard(
+                    text: "⌥⇧I 输入翻译 · ⌥D 划词翻译 · ⌥⇧S 截图 OCR",
+                    showsProgress: false
+                )
             }
         }
     }
@@ -319,6 +469,51 @@ struct ResultView: View {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(Color.secondary.opacity(0.08))
             )
+    }
+
+    /// Reuses the exact source-card shell, but its body is an editor instead
+    /// of static text. Enter submits; the "翻译" button is a mouse-friendly
+    /// equivalent reading the live AppKit draft.
+    private var inputCard: some View {
+        card {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 7) {
+                    Image(systemName: "keyboard")
+                        .font(.system(size: 12))
+                        .foregroundColor(.accentColor)
+                    Text("输入原文")
+                        .font(.system(size: 12.5, weight: .semibold))
+                    Spacer(minLength: 4)
+                    Button("翻译") {
+                        let draft = InputEditorRegistry.shared.textView?.string ?? vm.inputText
+                        vm.submitInput(draft)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                }
+                InputEditor(initialText: vm.inputText) { text in
+                    vm.submitInput(text)
+                }
+                .frame(height: 72)
+                .padding(6)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color(nsColor: .textBackgroundColor).opacity(0.75))
+                )
+                HStack(spacing: 10) {
+                    Text("⏎ 翻译")
+                        .font(.system(size: 10.5))
+                        .foregroundColor(.accentColor)
+                    Text("⇧⏎ 换行")
+                        .font(.system(size: 10.5))
+                        .foregroundColor(.secondary)
+                    Text("Esc 关闭")
+                        .font(.system(size: 10.5))
+                        .foregroundColor(.secondary)
+                    Spacer(minLength: 4)
+                }
+            }
+        }
     }
 
     private func statusCard(text: String, showsProgress: Bool) -> some View {

@@ -202,6 +202,7 @@ final class SettingsViewModel: ObservableObject {
             switch action {
             case .selection: settings.hotkeys.selection = binding
             case .ocr: settings.hotkeys.ocr = binding
+            case .input: settings.hotkeys.input = binding
             }
         }
         hotkeyService?.reregister()

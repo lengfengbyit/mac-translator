@@ -1,6 +1,6 @@
 # 划译（MacTranslator）
 
-菜单栏常驻的 macOS 翻译工具：全局快捷键划词翻译 / 区域截图 OCR 翻译，多个 OpenAI 兼容接口按优先级 Failover，历史与收藏本地持久化。
+菜单栏常驻的 macOS 翻译工具：全局快捷键划词翻译 / 手动输入回车翻译 / 区域截图 OCR 翻译，多个 OpenAI 兼容接口按优先级 Failover，历史与收藏本地持久化。
 
 ## 环境要求
 
@@ -28,7 +28,7 @@ open MacTranslator.xcodeproj
 ./scripts/build.sh Debug
 ```
 
-首次运行后仅显示菜单栏图标（无 Dock 图标）。下拉菜单：划词翻译（⌥D）、OCR 翻译（⌥⇧S）、历史与收藏、设置、退出。
+首次运行后仅显示菜单栏图标（无 Dock 图标）。下拉菜单：划词翻译（⌥D）、OCR 翻译（⌥⇧S）、输入翻译（⌥⇧I）、历史与收藏、设置、退出。
 
 ## 无 Xcode 构建安装（Command Line Tools 路径）
 
@@ -84,10 +84,20 @@ open build/MacTranslator.app && pgrep -fl MacTranslator
 如果本机同时运行 Bob（默认占用 ⌥D）或 iShot 类截图工具，全局快捷键可能被
 更底层的事件监听截获。`HotkeyService` 在注册失败时会自动切换到备用组合并把
 **实际生效**的快捷键写回 `settings.json`，菜单栏也会显示调整提示；也可以
-在「设置 → 快捷键」自定义，或直接用菜单栏的「OCR 翻译」入口（任何权限状态下都可点）。
+在「设置 → 快捷键」自定义，或直接用菜单栏入口（任何权限状态下都可点）。三组快捷键（含输入翻译 ⌥⇧I）都参与同样的自动避让。
 
 结果窗按内容自适应高度（不再固定 440×470），卡片式布局；「设置 → 通用」
 可调不透明度与重置窗口位置，工具栏图钉可让窗口在点击外部时保持不关闭。
+
+### 输入翻译
+
+`⌥⇧I` / 菜单栏「输入翻译」/ 结果窗工具栏键盘图标进入输入态：只读的原文卡片换成可编辑卡片，译文卡片、语言栏、朗读、收藏、复制、重译全部复用，不另建窗口。输入后按 `⏎` 提交，`⇧⏎` 插入真实换行；中文输入法候选态的 `⏎` 只确认候选词，不触发翻译。请求失败或接口报错时输入内容会保留，可改完直接再按一次回车。工具栏键盘图标会把当前原文带进编辑框，方便改错别字重译。
+
+编辑器是 AppKit `NSTextView`（`SubmitTextView` + `InputEditor`），草稿只存在 AppKit 侧、不回写 `@Published`，避免每次按键触发 SwiftUI 全量重绘（此前设置页输入框 bug 的根因）。系统编辑命令（⌘V / ⌘A / Delete / 撤销）原生可用；自动引号、自动破折号与拼写校正已关闭，保证送给模型的是原文。
+
+窗口焦点是关键约束：面板默认 `canBecomeKey = false`，划词 / OCR 结果绝不抢前台 App 焦点；仅输入模式通过 `BasePanel.allowsKeyboardInput` 打开并 `makeKeyAndOrderFront`，`close()` / `endInputMode()` 立即恢复。结果窗的全局 Esc 监听带 `hasMarkedText()` 守卫，输入法候选态按 Esc 只取消候选，不关窗。
+
+**升级兼容**：旧版 `settings.json` 的 `hotkeys` 没有 `input` 字段。`HotkeyBindings` 手写 `init(from:)` 用 `decodeIfPresent` 补默认值 ⌥⇧I——若用编译器合成的解码器，缺字段会抛错并让 `SettingsStore` 把**整个配置（含 apiKey）**回退成默认值。输入翻译不需要辅助功能 / 屏幕录制权限。详见 `12-输入翻译功能报告.md`。
 
 ### 朗读音色
 

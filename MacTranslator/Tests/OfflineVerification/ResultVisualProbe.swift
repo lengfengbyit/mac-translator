@@ -32,7 +32,12 @@ final class ResultViewModel: ObservableObject {
     @Published var showsPermissionAction = false
     @Published var sourceLanguageLabel = "自动检测"
     @Published var targetLanguageLabel = "简体中文"
+    @Published var inputMode = false
+    @Published var inputText = ""
     var onClose: (() -> Void)?
+    func startInputAction() {}
+    func submitInput(_ text: String) {}
+    func endInputMode() { inputMode = false }
     func copyAction() {}
     func copyOriginalAction() {}
     func favoriteAction() {}
@@ -57,9 +62,34 @@ final class ProbeHostingView: NSHostingView<ResultView> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
-private func savePNG(_ image: CGImage, _ path: String) {
-    let rep = NSBitmapImageRep(cgImage: image)
-    if let data = rep.representation(using: .png, properties: [:]) {
+/// Offscreen render of the hosting view. Unlike CGWindowListCreateImage this
+/// needs no screen-recording grant and works while the session is locked, so
+/// visual regressions can always be inspected.
+private func saveViewPNG(_ view: NSView, _ path: String) {
+    let bounds = view.bounds
+    let scale: CGFloat = 2
+    guard let rep = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: Int(bounds.width * scale),
+        pixelsHigh: Int(bounds.height * scale),
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bytesPerRow: 0,
+        bitsPerPixel: 0
+    ) else { return }
+    rep.size = bounds.size
+    if let ctx = NSGraphicsContext(bitmapImageRep: rep) {
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = ctx
+        NSColor.windowBackgroundColor.setFill()
+        bounds.fill()
+        NSGraphicsContext.restoreGraphicsState()
+    }
+    view.cacheDisplay(in: bounds, to: rep)
+    if let data = rep.representation(using: NSBitmapImageRep.FileType.png, properties: [:]) {
         try? data.write(to: URL(fileURLWithPath: path))
     }
 }
@@ -132,6 +162,16 @@ struct ResultVisualProbe {
                 vm.errorMessage = nil
                 vm.showsPermissionAction = false
                 vm.progressText = "正在尝试第 1/2 个接口：GLM"
+            }),
+            ("input", {
+                vm.progressText = nil
+                vm.result = nil
+                vm.inputMode = true
+                vm.inputText = ""
+            }),
+            ("input_result", {
+                vm.inputText = "Mac Translator"
+                vm.result = TranslationResult(original: "Mac Translator", translated: "Mac 翻译器")
             })
         ]
 
@@ -145,21 +185,8 @@ struct ResultVisualProbe {
             let height = panel.frame.height
             print("V\(index) state=\(state.0) windowHeight=\(Int(height)) bodyHeight=\(Int(ResultAppearance.shared.bodyHeight))")
 
-            let mainTop = NSScreen.main?.frame.maxY ?? 1080
-            let frame = panel.frame
-            let pad: CGFloat = 22
-            let cgRect = CGRect(
-                x: frame.minX - pad,
-                y: mainTop - frame.maxY - pad,
-                width: frame.width + pad * 2,
-                height: frame.height + pad * 2
-            )
-            if let image = CGWindowListCreateImage(
-                cgRect, .optionOnScreenOnly, kCGNullWindowID, .bestResolution
-            ) {
-                savePNG(image, "/tmp/mt_result_\(state.0).png")
-                print("   saved /tmp/mt_result_\(state.0).png")
-            }
+            saveViewPNG(hosting, "/tmp/mt_result_\(state.0).png")
+            print("   saved /tmp/mt_result_\(state.0).png")
         }
         panel.close()
     }
