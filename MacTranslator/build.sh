@@ -66,13 +66,23 @@ cp "$PLIST_SRC" "$CONTENTS/Info.plist"
 "$PLUTIL" -lint "$CONTENTS/Info.plist" >/dev/null
 
 echo "==> Compiling Core Data model -> Model.momd"
+# Apple's momc aborts (Abort trap: 6) on this model under recent Xcode
+# releases, so trust it only when it actually succeeds and otherwise fall
+# back to the embedded Swift helper defined below.
+MODEL_COMPILED=0
 MOMC="$(xcrun -f momc 2>/dev/null || true)"
 if [ -n "$MOMC" ] && [ -x "$MOMC" ]; then
-  "$MOMC" "$SRC/Resources/Model.xcdatamodeld/Model.xcdatamodel" "$RES/Model.momd"
-  echo "    compiled with momc"
-else
-  echo "    momc not available; generating Model.momd with embedded Swift helper"
-  GEN="$BUILD/.modelgen"
+  if "$MOMC" "$SRC/Resources/Model.xcdatamodeld/Model.xcdatamodel" "$RES/Model.momd"; then
+    echo "    compiled with momc"
+    MODEL_COMPILED=1
+  else
+    echo "    [warning] momc failed; falling back to embedded Swift helper"
+    rm -rf "$RES/Model.momd"
+  fi
+fi
+
+generate_model_with_helper() {
+  local GEN="$BUILD/.modelgen"
   mkdir -p "$GEN"
   cat > "$GEN/make_model.swift" <<'SWIFT'
 import Foundation
@@ -222,6 +232,10 @@ SWIFT
     -framework CoreData \
     -o "$GEN/make_model" "$GEN/make_model.swift"
   "$GEN/make_model" "$MODEL_SRC" "$RES/Model.momd" "$APP_NAME"
+}
+
+if [ "$MODEL_COMPILED" = "0" ]; then
+  generate_model_with_helper
 fi
 
 # Copy resource directory as-is. There are no named image assets in this project

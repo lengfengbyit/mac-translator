@@ -63,7 +63,8 @@ chmod +x build.sh scripts/install.sh
 
 - **Core Data 模型**：Command Line Tools 不带 `momc` / `actool`。脚本内嵌一个 Swift
   helper 解析 `Model.xcdatamodel/contents`，生成 `Contents/Resources/Model.momd/Model.mom`
-  （系统有 `momc` 时优先用它）。helper 给实体的 `representedClassName` 加上
+  （新版 Xcode 的 `momc` 在此模型上会直接崩溃，因此脚本只把它当可选项：
+  能编译成功才用，失败立刻回退到 helper）。helper 给实体的 `representedClassName` 加上
   `MacTranslator.` 模块前缀——Swift 类在可执行文件里注册为 `MacTranslator.<类名>`，
   少了前缀运行时 `HistoryRecordEntity(context:)` 会找不到类。`Assets.xcassets` 目前
   只有 `Contents.json`，菜单栏图标用的是 `NSImage.statusAvailableName` 系统图，
