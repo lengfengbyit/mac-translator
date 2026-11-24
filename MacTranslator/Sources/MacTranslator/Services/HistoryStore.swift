@@ -110,10 +110,13 @@ final class HistoryStore: HistoryStoring {
 
     func clearAll() throws {
         try performOnContext { context in
-            let fetch = NSFetchRequest<NSFetchRequestResult>(entityName: "HistoryRecordEntity")
-            let batch = NSBatchDeleteRequest(fetchRequest: fetch)
-            try context.execute(batch)
-            context.refreshAllObjects()
+            // NSBatchDeleteRequest is unsupported on in-memory stores (throws
+            // NSInternalInconsistencyException), so fetch+delete instead.
+            // History is capped at retentionLimit records, so this is cheap.
+            let request = NSFetchRequest<NSFetchRequestResult>(entityName: "HistoryRecordEntity")
+            for case let object as NSManagedObject in try context.fetch(request) {
+                context.delete(object)
+            }
             try self.stack.save()
         }
     }

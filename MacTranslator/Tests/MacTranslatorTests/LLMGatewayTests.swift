@@ -243,7 +243,9 @@ final class LLMGatewayTests: XCTestCase {
         XCTAssertEqual(session.requests.count, 1)
         let body = String(data: session.requests[0].httpBody ?? Data(), encoding: .utf8) ?? ""
         XCTAssertTrue(body.contains("image_url"))
-        XCTAssertTrue(body.contains("data:image/jpeg;base64,"))
+        // Apple's JSONSerialization escapes "/" as "\/" inside strings.
+        let normalized = body.replacingOccurrences(of: "\\/", with: "/")
+        XCTAssertTrue(normalized.contains("data:image/jpeg;base64,"))
     }
 
     func testNoEnabledEndpointThrows() async throws {
