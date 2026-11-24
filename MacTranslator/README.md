@@ -18,6 +18,18 @@
 - `Tests/MacTranslatorTests`：核心逻辑单元测试
 - `scripts`：构建、签名公证、DMG 打包脚本
 
+## 下载安装（推荐）
+
+不想自己编译的话，直接下载 [v1.0.0 安装包](https://github.com/lengfengbyit/mac-translator/releases/download/v1.0.0/MacTranslator-1.0.0-universal.zip)（Intel / Apple 芯片通用）：
+
+```bash
+mkdir mac-translator-1.0.0 && cd mac-translator-1.0.0
+unzip ../MacTranslator-1.0.0-universal.zip
+./Install.command      # 或双击 Install.command
+```
+
+首次打开若被 Gatekeeper 拦截，脚本会自动移除下载隔离属性；也可手动执行 `xattr -cr /Applications/MacTranslator.app`。发布包为 ad-hoc 签名，未做 Apple Developer ID 公证。
+
 ## 构建与运行
 
 ```bash
