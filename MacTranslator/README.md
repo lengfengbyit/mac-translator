@@ -45,7 +45,7 @@ chmod +x build.sh scripts/install.sh
 
 `build.sh` 流程：定位 SDK / swiftc / plutil / codesign → 生成 `Contents/Info.plist`
 （替换 `$(EXECUTABLE_NAME)` 等 Xcode 变量）→ 编译 Core Data 模型 → `swiftc`
-一次编译全部 43 个源文件 → 组装 bundle → 签名（需 `-framework ScreenCaptureKit`）。
+一次编译全部 45 个源文件 → 组装 bundle → 签名（需 `-framework ScreenCaptureKit`）。
 
 两个关键实现细节（改动构建脚本时别踩回去）：
 
@@ -88,6 +88,16 @@ open build/MacTranslator.app && pgrep -fl MacTranslator
 
 结果窗按内容自适应高度（不再固定 440×470），卡片式布局；「设置 → 通用」
 可调不透明度与重置窗口位置，工具栏图钉可让窗口在点击外部时保持不关闭。
+
+### 朗读音色
+
+结果窗可朗读原文与译文。旧实现用 `availableVoices.first(where:)` 盲选，macOS 15 上英文稳定命中 `Albert`——Apple 遗留的 novelty 特效音（同批还有 Bells / Boing / Zarvox），中文则恰好抓到 `Eddy (zh-CN)`。
+
+现改为 `SpeechVoiceService`：语音目录整体排除 `com.apple.speech.synthesis.voice.*`；按文本语言（假名 / 韩文 / 汉字 / 其他）匹配同音色家族，首选 en-US / zh-CN；单语种音色有显式跨语言回退。默认 `eddy`，英文 `com.apple.eloquence.en-US.Eddy`、中文 `com.apple.eloquence.zh-CN.Eddy`（保持原有听感），日韩也有同系列。
+
+`设置 → 通用 → 朗读音色` 提供 10 个音色下拉与中英文试听按钮，选择写入 `settings.json` 的 `speechVoiceFamily`，每次朗读都读最新值，结果窗已开着也即时生效。「跟随系统默认」返回 `nil` 而不是空字符串——macOS 15 的 `defaultVoice.rawValue` 是空哨兵值。
+
+详见 `11-朗读音色修复报告.md`。
 
 ### 签名与重新授权
 

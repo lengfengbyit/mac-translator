@@ -22,6 +22,10 @@ final class ResultViewModel: ObservableObject {
     /// ID of the history record produced by this result, used by the favorite toggle.
     private(set) var recordID: UUID?
 
+    /// Injected by ResultWindowController. Read on each朗读 so a Settings change
+    /// applies immediately, even when this panel is already visible.
+    var settingsStore: SettingsStoring?
+
     var onCopy: (() -> Void)?
     var onCopyOriginal: (() -> Void)?
     var onFavorite: ((UUID) -> Void)?
@@ -29,8 +33,6 @@ final class ResultViewModel: ObservableObject {
     var onClose: (() -> Void)?
     var onPinChange: ((Bool) -> Void)?
     var onOpenPermissionSettings: (() -> Void)?
-
-    private let synthesizer = NSSpeechSynthesizer()
 
     func show(
         _ result: TranslationResult,
@@ -116,19 +118,11 @@ final class ResultViewModel: ObservableObject {
         onOpenPermissionSettings?()
     }
 
-    /// Speaks the original or translated text with a language-matched system voice.
+    /// Speaks the original or translated text with the user-chosen voice family.
+    /// The old implementation grabbed the first en/zh voice in `availableVoices`,
+    /// which on macOS 15 is a novelty effect voice ("Albert") for English.
     func speakAction(_ text: String) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        if synthesizer.isSpeaking { synthesizer.stopSpeaking() }
-        let wantsChinese = trimmed.unicodeScalars.contains { (0x4E00...0x9FFF).contains($0.value) }
-        let prefix = wantsChinese ? "zh" : "en"
-        if let voice = NSSpeechSynthesizer.availableVoices.first(where: { name in
-            let attributes = NSSpeechSynthesizer.attributes(forVoice: name)
-            return (attributes[.localeIdentifier] as? String)?.hasPrefix(prefix) == true
-        }) {
-            synthesizer.setVoice(voice)
-        }
-        synthesizer.startSpeaking(trimmed)
+        let family = SpeechVoiceFamily.from(settingsStore?.current.speechVoiceFamily)
+        SpeechVoiceService.shared.speak(text, family: family)
     }
 }

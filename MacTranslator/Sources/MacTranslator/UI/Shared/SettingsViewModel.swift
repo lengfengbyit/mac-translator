@@ -85,6 +85,21 @@ final class SettingsViewModel: ObservableObject {
         updateSettings { $0.resultOpacity = value }
     }
 
+    func setSpeechVoiceFamily(_ family: String) {
+        updateSettings { $0.speechVoiceFamily = family }
+    }
+
+    /// Plays a short sample so a voice family can be compared before translating.
+    func previewSpeech(language: String) {
+        let sample = language == "zh"
+            ? "这是一段中文朗读示例，用来试听当前音色。"
+            : "This is a sample of the English reading voice for Mac Translator."
+        SpeechVoiceService.shared.speak(
+            sample,
+            family: SpeechVoiceFamily.from(settings.speechVoiceFamily)
+        )
+    }
+
     func setOCRMode(_ mode: OCRMode) {
         updateSettings { $0.ocrMode = mode }
         toast.show("已切换为：\(mode.displayName)")

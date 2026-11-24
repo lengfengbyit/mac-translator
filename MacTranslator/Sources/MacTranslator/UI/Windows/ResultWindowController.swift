@@ -39,6 +39,9 @@ final class ResultWindowController {
     init(settingsStore: SettingsStoring) {
         self.settingsStore = settingsStore
         self.appearance = ResultAppearance.shared
+        // Read the voice family lazily so a Settings change takes effect on the
+        // very next朗读 click, even while this panel is already on screen.
+        viewModel.settingsStore = settingsStore
         let initial = NSSize(
             width: ResultLayout.width,
             height: ResultLayout.initialWindowHeight

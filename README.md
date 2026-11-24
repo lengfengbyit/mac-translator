@@ -14,6 +14,7 @@
 | 截图 OCR 翻译 | 框选区域 → ScreenCaptureKit 截图 → 本地 Vision 识别；也可切换为多模态 LLM 直接读图 |
 | 多接口 Failover | 多个 OpenAI 兼容接口拖拽排序，每次只调一个；网络错误 / 20s 超时 / 非 2xx / 非法响应才切下一个，结果标注降级来源 |
 | 结果窗 | 紧凑卡片式布局，高度随内容自适应；图钉固定、朗读、折叠、复制、收藏、重译、可调不透明度、拖动位置记忆 |
+| 朗读音色 | 原文/译文一键朗读；「设置 → 通用」可选 10 种音色并中英文试听，默认中英同款 Eddy，系统特效音已排除 |
 | 历史与收藏 | Core Data 本地存储，支持保留条数限制与检索 |
 | 缓存 | 基于 `sha256(输入+语言+模型+类型)` 的 500 条 LRU，可开关与清除 |
 | 离线可用部分 | 本地 Vision OCR 不需要联网；Ollama 等本地模型可作为翻译后端 |
@@ -29,7 +30,7 @@ chmod +x build.sh scripts/install.sh
 ./scripts/install.sh
 ```
 
-`install.sh` 会：用 `swiftc` 一次编译 43 个 Swift 源文件 → 生成 Core Data `.momd` → 组装 `.app` bundle → 签名 → 备份旧版 → 安装到 `/Applications` → 启动。只构建不安装用 `./build.sh`，产物在 `build/MacTranslator.app`。
+`install.sh` 会：用 `swiftc` 一次编译 45 个 Swift 源文件 → 生成 Core Data `.momd` → 组装 `.app` bundle → 签名 → 备份旧版 → 安装到 `/Applications` → 启动。只构建不安装用 `./build.sh`，产物在 `build/MacTranslator.app`。
 
 用 Xcode 的话直接 `open MacTranslator.xcodeproj`。
 
@@ -89,7 +90,7 @@ cd MacTranslator
 zsh Tests/OfflineVerification/run.sh
 ```
 
-6 组离线回归（窗口生命周期、输入框焦点、结果窗事件链、OCR 与布局、持久化等）全部通过、0 失败；另有窗口结构命中测试、结果页浅/深色视觉探针、以及「坐标转换 → 截图 → Vision 识别」端到端探针。
+8 组离线回归（持久化、窗口生命周期、输入框焦点、结果窗事件链、OCR 与布局、朗读音色源码断言、真实系统语音探针等）全部通过、0 失败；另有窗口结构命中测试、结果页浅/深色视觉探针、以及「坐标转换 → 截图 → Vision 识别」端到端探针。
 
 ## 安全与隐私
 
@@ -113,6 +114,7 @@ zsh Tests/OfflineVerification/run.sh
 | [03-产品原型.html](03-产品原型.html) | 可交互原型 |
 | [04-技术文档.md](04-技术文档.md) | 架构设计 + 历轮实现变更记录 |
 | [05-QA验证报告.md](05-QA验证报告.md) ~ [10-截图翻译与结果页修复报告.md](10-截图翻译与结果页修复报告.md) | 各轮 QA 与 BugFix 记录 |
+| [11-朗读音色修复报告.md](11-朗读音色修复报告.md) | 英文朗读误选系统特效音的诊断与音色可配置化 |
 | [MacTranslator/README.md](MacTranslator/README.md) | 工程级构建 / 签名 / 权限细节 |
 
 ## License

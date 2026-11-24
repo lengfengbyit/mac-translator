@@ -11,6 +11,7 @@ OUT="/tmp/qa_offline_verification"
 swiftc -target x86_64-apple-macosx13.0 \
   "$SRC/Core/Models/Enums.swift" \
   "$SRC/Core/Models/AppSettings.swift" \
+  "$SRC/Core/Models/SpeechVoiceFamily.swift" \
   "$SRC/Core/Models/LLMInterface.swift" \
   "$SRC/Core/Models/TranslationModels.swift" \
   "$SRC/Core/Protocols/LLMProviding.swift" \
@@ -34,6 +35,7 @@ PERSIST_OUT="/tmp/qa_persistence_verification"
 swiftc -target x86_64-apple-macosx13.0 \
   "$SRC/Core/Models/Enums.swift" \
   "$SRC/Core/Models/AppSettings.swift" \
+  "$SRC/Core/Models/SpeechVoiceFamily.swift" \
   "$SRC/Core/Models/LLMInterface.swift" \
   "$SRC/Core/Models/TranslationModels.swift" \
   "$SRC/Core/Protocols/PersistenceProtocols.swift" \
@@ -82,6 +84,7 @@ PANEL_OUT="/tmp/qa_result_panel_verification"
 swiftc -target x86_64-apple-macosx13.0 \
   "$SRC/Core/Models/Enums.swift" \
   "$SRC/Core/Models/AppSettings.swift" \
+  "$SRC/Core/Models/SpeechVoiceFamily.swift" \
   "$SRC/Core/Models/LLMInterface.swift" \
   "$SRC/Core/Models/TranslationModels.swift" \
   "$SRC/Core/Protocols/PersistenceProtocols.swift" \
@@ -110,3 +113,33 @@ if [ $? -ne 0 ]; then
 fi
 
 "$OCR_OUT" "$PWD" || exit 1
+
+# ===== 朗读音色验证（源码断言）=====
+VOICE_OUT="/tmp/qa_speech_voice_verification"
+swiftc -target x86_64-apple-macosx13.0 \
+  -parse-as-library \
+  "Tests/OfflineVerification/SpeechVoiceVerification.swift" \
+  -o "$VOICE_OUT"
+
+if [ $? -ne 0 ]; then
+  echo "朗读音色验证编译失败"
+  exit 1
+fi
+
+"$VOICE_OUT" "$PWD" || exit 1
+
+# ===== 朗读音色真机探针（真实系统语音表）=====
+VOICE_PROBE_OUT="/tmp/qa_speech_voice_probe"
+swiftc -parse-as-library -target x86_64-apple-macosx13.0 \
+  -framework AppKit \
+  "$SRC/Core/Models/SpeechVoiceFamily.swift" \
+  "$SRC/Services/SpeechVoiceService.swift" \
+  "Tests/OfflineVerification/SpeechVoiceProbe.swift" \
+  -o "$VOICE_PROBE_OUT"
+
+if [ $? -ne 0 ]; then
+  echo "朗读音色真机探针编译失败"
+  exit 1
+fi
+
+"$VOICE_PROBE_OUT" || exit 1

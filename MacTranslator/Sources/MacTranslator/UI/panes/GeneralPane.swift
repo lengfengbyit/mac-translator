@@ -42,6 +42,29 @@ struct GeneralPane: View {
 
                 Divider()
 
+                Text("朗读音色")
+                    .font(.system(size: 13.5, weight: .semibold))
+                Picker("朗读音色", selection: speechVoiceBinding) {
+                    ForEach(SpeechVoiceFamily.allCases) { family in
+                        Text(family.displayName).tag(family.rawValue)
+                    }
+                }
+                .frame(width: 300)
+                Text(SpeechVoiceFamily.from(vm.settings.speechVoiceFamily).detail)
+                    .font(.system(size: 11.5))
+                    .foregroundColor(.secondary)
+                HStack(spacing: 14) {
+                    Button("试听中文") { vm.previewSpeech(language: "zh") }
+                        .buttonStyle(.borderless)
+                    Button("试听英文") { vm.previewSpeech(language: "en") }
+                        .buttonStyle(.borderless)
+                }
+                Text("朗读原文与译文都使用同一音色，并按文本语言自动匹配该音色的对应语种；已排除系统自带的特效音。")
+                    .font(.system(size: 11.5))
+                    .foregroundColor(.secondary)
+
+                Divider()
+
                 Text("目标语言")
                     .font(.system(size: 13.5, weight: .semibold))
                 Text("翻译结果使用的语言")
@@ -127,5 +150,9 @@ struct GeneralPane: View {
 
     private var resultOpacityBinding: Binding<Double> {
         Binding(get: { vm.settings.resultOpacity }, set: { vm.setResultOpacity($0) })
+    }
+
+    private var speechVoiceBinding: Binding<String> {
+        Binding(get: { vm.settings.speechVoiceFamily }, set: { vm.setSpeechVoiceFamily($0) })
     }
 }

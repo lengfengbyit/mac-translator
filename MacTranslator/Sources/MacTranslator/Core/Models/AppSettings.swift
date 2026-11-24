@@ -63,6 +63,8 @@ struct AppSettings: Codable, Equatable {
     /// Opacity of the floating result window background (0.35...1.0).
     /// Text is always drawn fully opaque; only the backdrop is affected.
     var resultOpacity: Double
+    /// Raw value of SpeechVoiceFamily used for the 朗读 buttons.
+    var speechVoiceFamily: String
 
     static let defaultTargetLanguage = "简体中文"
     static let targetLanguageOptions = ["简体中文", "繁体中文", "English", "日本語"]
@@ -81,13 +83,15 @@ struct AppSettings: Codable, Equatable {
         interfaces: [],
         maxCacheEntries: 500,
         historyRetentionLimit: 500,
-        resultOpacity: defaultResultOpacity
+        resultOpacity: defaultResultOpacity,
+        speechVoiceFamily: SpeechVoiceFamily.default.rawValue
     )
 
     private enum CodingKeys: String, CodingKey {
         case targetLanguage, sourceLanguage, sourceAutoDetect, ocrMode
         case cacheEnabled, timeoutSeconds, hotkeys, interfaces
         case maxCacheEntries, historyRetentionLimit, resultOpacity
+        case speechVoiceFamily
     }
 
     init(
@@ -101,7 +105,8 @@ struct AppSettings: Codable, Equatable {
         interfaces: [LLMInterface] = [],
         maxCacheEntries: Int = 500,
         historyRetentionLimit: Int = 500,
-        resultOpacity: Double = AppSettings.defaultResultOpacity
+        resultOpacity: Double = AppSettings.defaultResultOpacity,
+        speechVoiceFamily: String = SpeechVoiceFamily.default.rawValue
     ) {
         self.targetLanguage = targetLanguage
         self.sourceLanguage = sourceLanguage
@@ -115,6 +120,9 @@ struct AppSettings: Codable, Equatable {
         self.historyRetentionLimit = max(1, historyRetentionLimit)
         self.resultOpacity = min(max(resultOpacity, AppSettings.resultOpacityRange.lowerBound),
                                  AppSettings.resultOpacityRange.upperBound)
+        // Unknown / stale values (e.g. a voice removed by a macOS update) fall
+        // back to the recommended family instead of silently selecting nothing.
+        self.speechVoiceFamily = SpeechVoiceFamily.from(speechVoiceFamily).rawValue
     }
 
     init(from decoder: Decoder) throws {
@@ -132,7 +140,9 @@ struct AppSettings: Codable, Equatable {
             maxCacheEntries: try c.decodeIfPresent(Int.self, forKey: .maxCacheEntries) ?? 500,
             historyRetentionLimit: try c.decodeIfPresent(Int.self, forKey: .historyRetentionLimit) ?? 500,
             resultOpacity: try c.decodeIfPresent(Double.self, forKey: .resultOpacity)
-                ?? AppSettings.defaultResultOpacity
+                ?? AppSettings.defaultResultOpacity,
+            speechVoiceFamily: try c.decodeIfPresent(String.self, forKey: .speechVoiceFamily)
+                ?? SpeechVoiceFamily.default.rawValue
         )
     }
 
