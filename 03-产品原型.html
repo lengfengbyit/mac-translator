@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>划译 · macOS 翻译软件 — 交互原型</title>
+<style>
+  :root{
+    --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",Arial,sans-serif;
+    --blue:#0a6cff; --blue-h:#0058e6; --green:#34c759; --red:#ff3b30;
+    --ink:#1d1d1f; --sub:#6e6e73; --line:#e5e5ea; --panel:#ffffff;
+    --menubar:rgba(250,250,252,.78);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:var(--font); color:var(--ink);
+    background:linear-gradient(135deg,#7e8ff5 0%,#a58bf0 35%,#f0a6c8 70%,#ffcf9e 100%);
+    overflow:hidden; -webkit-font-smoothing:antialiased;
+  }
+  .desk-decoration{
+    position:absolute; width:560px; height:560px; border-radius:50%;
+    background:radial-gradient(circle,rgba(255,255,255,.35),rgba(255,255,255,0) 70%);
+    right:-120px; bottom:-180px; filter:blur(10px);
+  }
+
+  /* ===== Menu Bar ===== */
+  .menubar{
+    position:fixed; top:0; left:0; right:0; height:30px; z-index:1000;
+    background:var(--menubar); backdrop-filter:saturate(180%) blur(20px);
+    -webkit-backdrop-filter:saturate(180%) blur(20px);
+    border-bottom:.5px solid rgba(0,0,0,.12);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 16px; font-size:13.5px; user-select:none;
+  }
+  .mb-left,.mb-right{display:flex;align-items:center;gap:2px}
+  .mb-item{padding:3px 11px;border-radius:5px;cursor:default;white-space:nowrap}
+  .mb-item.strong{font-weight:600}
+  .mb-item:hover,.mb-item.open{background:rgba(0,0,0,.09)}
+  .apple{font-size:16px;padding-right:6px;line-height:1}
+  .mb-right .mb-item{padding:3px 8px}
+  .mb-icon{font-size:14px}
+
+  /* ===== Dropdown ===== */
+  .dropdown{
+    position:fixed; top:30px; left:36px; width:246px; z-index:999;
+    background:rgba(255,255,255,.92); backdrop-filter:blur(30px);
+    -webkit-backdrop-filter:blur(30px);
+    border:1px solid rgba(0,0,0,.12); border-radius:8px;
+    box-shadow:0 12px 40px rgba(0,0,0,.22);
+    padding:5px; font-size:13.5px; display:none;
+  }
+  .dropdown.show{display:block;animation:pop .14s ease}
+  @keyframes pop{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}
+  .dd-item{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:5px;cursor:pointer}
+  .dd-item:hover{background:var(--blue);color:#fff}
+  .dd-item .ic{width:18px;text-align:center;font-size:14px}
+  .dd-item .key{margin-left:auto;font-size:12px;color:var(--sub)}
+  .dd-item:hover .key{color:rgba(255,255,255,.8)}
+  .dd-sep{height:1px;background:var(--line);margin:5px 8px}
+
+  /* ===== Window ===== */
+  .workspace{position:absolute;inset:30px 0 0 0}
+  .window{
+    position:absolute; background:var(--panel); border-radius:12px;
+    border:1px solid rgba(0,0,0,.1);
+    box-shadow:0 24px 70px rgba(0,0,0,.28),0 2px 8px rgba(0,0,0,.1);
+    overflow:hidden; display:none; flex-direction:column;
+  }
+  .window.show{display:flex;animation:rise .18s ease}
+  @keyframes rise{from{opacity:0;transform:translateY(8px) scale(.99)}to{opacity:1;transform:none}}
+  .titlebar{
+    height:40px; min-height:40px; display:flex; align-items:center; padding:0 14px;
+    background:linear-gradient(#fbfbfd,#f2f2f5); border-bottom:1px solid var(--line);
+    position:relative;
+  }
+  .lights{display:flex;gap:8px}
+  .light{width:12px;height:12px;border-radius:50%;border:1px solid rgba(0,0,0,.08)}
+  .l-red{background:#ff5f57}.l-yel{background:#febc2e}.l-grn{background:#28c840}
+  .title{position:absolute;left:0;right:0;text-align:center;font-size:13px;font-weight:600;color:#3a3a3c;pointer-events:none}
+
+  /* result window */
+  #win-result{width:470px;left:calc(50% - 235px);top:70px}
+  .res-body{padding:18px 20px 16px}
+  .res-meta{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+  .badge{font-size:11.5px;padding:3px 9px;border-radius:20px;background:#eef4ff;color:var(--blue);font-weight:600}
+  .llm-tag{font-size:11.5px;padding:3px 10px;border-radius:20px;background:#eaf8ee;color:#1a8a3a;font-weight:600;display:flex;align-items:center;gap:5px}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+  .degrade{font-size:11px;color:#b26a00;background:#fff5e2;padding:2px 8px;border-radius:12px}
+  .spacer{flex:1}
+  .field-label{font-size:11px;color:var(--sub);margin:0 0 5px 2px;font-weight:600;letter-spacing:.3px}
+  .orig,.trans{
+    border:1px solid var(--line); border-radius:9px; padding:12px 14px; font-size:14px; line-height:1.6;
+    background:#fafafa;
+  }
+  .trans{background:#fff; border-color:#d6e4ff; margin-top:14px; font-size:15px}
+  .arrow{text-align:center;color:#b0b0b5;font-size:12px;margin:6px 0 -8px}
+  .res-actions{display:flex;gap:8px;margin-top:16px;align-items:center}
+  .btn{
+    font-family:inherit;font-size:13px;border:1px solid var(--line);background:#fff;color:var(--ink);
+    padding:7px 14px;border-radius:7px;cursor:pointer;transition:.12s;display:flex;align-items:center;gap:6px;
+  }
+  .btn:hover{background:#f4f4f6}
+  .btn:active{transform:scale(.97)}
+  .btn.primary{background:var(--blue);color:#fff;border-color:var(--blue)}
+  .btn.primary:hover{background:var(--blue-h)}
+  .btn.fav-on{background:#fff8e6;border-color:#f2c94c;color:#a97500}
+  .star{font-size:15px}
+  .hint-line{font-size:11px;color:#9a9aa0;margin-top:10px;text-align:center}
+
+  /* settings window */
+  #win-settings{width:640px;height:480px;left:calc(50% - 320px);top:56px}
+  .set-body{display:flex;flex:1;min-height:0}
+  .sidebar{width:172px;background:#f7f7f9;border-right:1px solid var(--line);padding:12px 10px;overflow-y:auto}
+  .side-group-title{font-size:11px;color:#9a9aa0;padding:8px 10px 4px;font-weight:600}
+  .side-item{padding:7px 11px;border-radius:6px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:9px;margin-bottom:2px;color:#3a3a3c}
+  .side-item.active{background:var(--blue);color:#fff}
+  .side-item:not(.active):hover{background:#e9e9ee}
+  .side-item .ic{width:18px;text-align:center}
+  .content{flex:1;padding:22px 24px;overflow-y:auto}
+  .pane{display:none}
+  .pane.active{display:block}
+  .pane h2{font-size:17px;margin-bottom:4px}
+  .pane .desc{font-size:12.5px;color:var(--sub);line-height:1.55;margin-bottom:18px}
+
+  /* LLM list */
+  .info-banner{background:#eef4ff;border:1px solid #d6e4ff;color:#1d4f9c;font-size:12px;line-height:1.5;padding:9px 12px;border-radius:8px;margin-bottom:14px}
+  .llm-list{display:flex;flex-direction:column;gap:9px}
+  .llm-card{
+    border:1px solid var(--line);border-radius:9px;padding:11px 12px;background:#fff;
+    display:flex;gap:11px;align-items:flex-start;transition:.12s;
+  }
+  .llm-card.dragging{opacity:.4}
+  .llm-card.dragover{border-color:var(--blue);background:#f5f9ff}
+  .grip{cursor:grab;color:#b0b0b5;font-size:15px;padding-top:14px;user-select:none}
+  .grip:active{cursor:grabbing}
+  .prio{
+    width:26px;height:26px;min-width:26px;border-radius:50%;background:var(--blue);color:#fff;
+    font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:2px;
+  }
+  .prio.off{background:#c7c7cc}
+  .llm-fields{flex:1;min-width:0}
+  .llm-top{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+  .llm-name{font-weight:600;font-size:13.5px}
+  .chip{font-size:10.5px;padding:2px 7px;border-radius:10px;background:#f0f0f3;color:#6e6e73}
+  .chip.on{background:#eaf8ee;color:#1a8a3a}
+  .field-row{display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+  .field-row label{font-size:11px;color:var(--sub);display:flex;flex-direction:column;gap:3px;flex:1;min-width:120px}
+  .field-row input{
+    font-family:inherit;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:5px 8px;width:100%;
+    color:var(--ink);background:#fafafa;
+  }
+  .field-row input:focus{outline:none;border-color:var(--blue);background:#fff}
+  .llm-ops{display:flex;flex-direction:column;gap:4px;align-items:center}
+  .mini{
+    border:1px solid var(--line);background:#fff;border-radius:5px;width:24px;height:22px;
+    font-size:11px;cursor:pointer;color:#555;line-height:1;
+  }
+  .mini:hover{background:#f0f0f3}
+  .mini:disabled{opacity:.3;cursor:not-allowed}
+  .add-btn{margin-top:4px;align-self:flex-start}
+  .switch{
+    position:relative;width:38px;height:22px;border-radius:11px;background:#d5d5da;cursor:pointer;
+    transition:.18s;flex-shrink:0;
+  }
+  .switch::after{
+    content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:.18s;
+  }
+  .switch.on{background:var(--green)}
+  .switch.on::after{transform:translateX(16px)}
+  .sw-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid #f0f0f2}
+  .sw-row:last-child{border:none}
+  .sw-text{flex:1}
+  .sw-text b{font-size:13.5px;font-weight:600;display:block}
+  .sw-text span{font-size:12px;color:var(--sub);line-height:1.45}
+
+  /* OCR segmented */
+  .seg{display:flex;background:#e9e9ee;border-radius:8px;padding:3px;margin-bottom:16px}
+  .seg button{
+    flex:1;font-family:inherit;font-size:13px;padding:8px 10px;border:none;background:transparent;
+    border-radius:6px;cursor:pointer;color:#3a3a3c;transition:.15s;
+  }
+  .seg button.active{background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.14);font-weight:600}
+  .mode-card{border:1px solid var(--line);border-radius:9px;padding:14px;margin-bottom:12px}
+  .mode-card h3{font-size:13.5px;margin-bottom:6px}
+  .mode-card p{font-size:12.5px;color:var(--sub);line-height:1.6}
+  .mode-card .tags{margin-top:9px;display:flex;gap:6px;flex-wrap:wrap}
+  .tag{font-size:11px;padding:3px 8px;border-radius:12px;background:#f0f0f3;color:#555}
+
+  /* history */
+  #win-history{width:600px;height:500px;left:calc(50% - 300px);top:50px}
+  .hist-toolbar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line)}
+  .tabs{display:flex;background:#e9e9ee;border-radius:7px;padding:2px}
+  .tabs button{font-family:inherit;font-size:12.5px;padding:5px 14px;border:none;background:transparent;border-radius:5px;cursor:pointer;color:#3a3a3c}
+  .tabs button.active{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.12);font-weight:600}
+  .search{
+    font-family:inherit;font-size:12.5px;border:1px solid var(--line);border-radius:7px;
+    padding:6px 11px;width:180px;margin-left:auto;background:#fafafa;
+  }
+  .search:focus{outline:none;border-color:var(--blue);background:#fff}
+  .hist-list{flex:1;overflow-y:auto;padding:6px 0}
+  .hist-item{display:flex;gap:11px;padding:11px 16px;border-bottom:1px solid #f2f2f4;align-items:flex-start}
+  .hist-item:hover{background:#fafafa}
+  .hist-main{flex:1;min-width:0}
+  .hist-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+  .hist-time{font-size:11px;color:#9a9aa0}
+  .src{font-size:10.5px;padding:2px 7px;border-radius:10px;background:#f0f0f3;color:#666}
+  .src.ocr{background:#f3ecff;color:#7a4fc0}
+  .hist-orig{font-size:12.5px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px}
+  .hist-trans{font-size:13.5px}
+  .hist-iface{font-size:10.5px;color:#1a8a3a;margin-top:4px}
+  .fav-btn{background:none;border:none;cursor:pointer;font-size:18px;color:#c7c7cc;padding:2px 4px;line-height:1}
+  .fav-btn.on{color:#f2b705}
+  .empty{padding:50px 20px;text-align:center;color:#9a9aa0;font-size:13px}
+
+  /* toast */
+  .toast{
+    position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(20px);
+    background:rgba(28,28,30,.92);color:#fff;font-size:13px;padding:10px 18px;border-radius:20px;
+    opacity:0;pointer-events:none;transition:.22s;z-index:2000;backdrop-filter:blur(10px);
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .caption{
+    position:absolute;left:20px;bottom:18px;color:rgba(255,255,255,.9);font-size:12px;
+    text-shadow:0 1px 3px rgba(0,0,0,.3);line-height:1.7;user-select:none;
+  }
+  .caption b{font-size:14px;display:block;margin-bottom:2px}
+</style>
+</head>
+<body>
+<div class="desk-decoration"></div>
+
+<!-- ============ Menu Bar ============ -->
+<div class="menubar">
+  <div class="mb-left">
+    <span class="apple">●</span>
+    <span class="mb-item strong" id="appMenu">划译</span>
+    <span class="mb-item">功能</span>
+    <span class="mb-item">编辑</span>
+    <span class="mb-item" id="mbHistory">历史</span>
+    <span class="mb-item" id="mbSettings">设置</span>
+    <span class="mb-item">帮助</span>
+  </div>
+  <div class="mb-right">
+    <span class="mb-item mb-icon">◕</span>
+    <span class="mb-item mb-icon">▮▮▮</span>
+    <span class="mb-item" id="clock">周一 11月23日 19:40</span>
+  </div>
+</div>
+
+<!-- ============ Dropdown ============ -->
+<div class="dropdown" id="dropdown">
+  <div class="dd-item" data-act="result"><span class="ic">✂️</span><span>划词翻译</span><span class="key">⌥ D</span></div>
+  <div class="dd-item" data-act="resultOcr"><span class="ic">🔍</span><span>OCR 翻译</span><span class="key">⌥ ⇧ S</span></div>
+  <div class="dd-sep"></div>
+  <div class="dd-item" data-act="history"><span class="ic">🕘</span><span>历史与收藏</span></div>
+  <div class="dd-item" data-act="settings"><span class="ic">⚙️</span><span>设置…</span></div>
+  <div class="dd-sep"></div>
+  <div class="dd-item" data-act="quit"><span class="ic">⏻</span><span>退出划译</span><span class="key">⌘ Q</span></div>
+</div>
+
+<div class="workspace">
+
+  <!-- ============ Result Window ============ -->
+  <div class="window show" id="win-result">
+    <div class="titlebar">
+      <div class="lights"><span class="light l-red"></span><span class="light l-yel"></span><span class="light l-grn"></span></div>
+      <div class="title">翻译结果</div>
+    </div>
+    <div class="res-body">
+      <div class="res-meta">
+        <span class="badge" id="resSource">✂️ 划词翻译</span>
+        <span class="llm-tag"><span class="dot"></span><span id="resLlm">主力接口 · GPT-4o</span></span>
+        <span class="degrade" id="resDegrade" style="display:none">由接口 1 降级而来</span>
+        <span class="spacer"></span>
+        <span style="font-size:11px;color:#9a9aa0" id="resTime">1.2s</span>
+      </div>
+      <div class="field-label">原文</div>
+      <div class="orig" id="origText">The quick brown fox jumps over the lazy dog. Translation should feel natural and effortless, without breaking your flow.</div>
+      <div class="arrow">↓</div>
+      <div class="field-label">译文</div>
+      <div class="trans" id="transText">敏捷的棕色狐狸跳过了懒狗。翻译应当自然流畅，不打断你的工作流。</div>
+      <div class="res-actions">
+        <button class="btn primary" id="btnCopy">⧉ 复制</button>
+        <button class="btn" id="btnFav"><span class="star">☆</span><span id="favLabel">收藏</span></button>
+        <button class="btn" id="btnRetrans">↻ 重译</button>
+        <span class="spacer"></span>
+        <span style="font-size:11px;color:#9a9aa0">Esc 关闭</span>
+      </div>
+      <div class="hint-line">仅悬浮窗展示 · 不会自动复制 / 通知 / 替换选中文本</div>
+    </div>
+  </div>
+
+  <!-- ============ Settings Window ============ -->
+  <div class="window" id="win-settings">
+    <div class="titlebar">
+      <div class="lights"><span class="light l-red"></span><span class="light l-yel"></span><span class="light l-grn"></span></div>
+      <div class="title">设置</div>
+    </div>
+    <div class="set-body">
+      <div class="sidebar">
+        <div class="side-group-title">翻译</div>
+        <div class="side-item active" data-pane="llm"><span class="ic">🤖</span>LLM 接口</div>
+        <div class="side-item" data-pane="ocr"><span class="ic">👁️</span>OCR 识别</div>
+        <div class="side-item" data-pane="general"><span class="ic">☰</span>通用</div>
+        <div class="side-group-title">系统</div>
+        <div class="side-item" data-pane="perm"><span class="ic">🔐</span>权限</div>
+        <div class="side-item" data-pane="hotkey"><span class="ic">⌨️</span>快捷键</div>
+      </div>
+      <div class="content">
+
+        <!-- LLM pane -->
+        <div class="pane active" id="pane-llm">
+          <h2>LLM 接口</h2>
+          <div class="desc">OpenAI 兼容格式 · 按优先级从上到下依次调用</div>
+          <div class="info-banner">调用规则：<b>每次仅调用一个接口</b>，取启用接口中优先级最高的；仅当失败（网络错误 / 超时 / HTTP 非 2xx / 响应不合法）才降级到下一个。可拖拽左侧手柄或使用 ↑↓ 调整顺序。</div>
+          <div class="llm-list" id="llmList"></div>
+          <button class="btn add-btn" id="addLlm">＋ 添加接口</button>
+        </div>
+
+        <!-- OCR pane -->
+        <div class="pane" id="pane-ocr">
+          <h2>OCR 识别</h2>
+          <div class="desc">选择截图后的识别方式，切换即时生效并保存</div>
+          <div class="seg" id="ocrSeg">
+            <button class="active" data-mode="local">本地 Vision 优先</button>
+            <button data-mode="multi">多模态 LLM 优先</button>
+          </div>
+          <div class="mode-card">
+            <h3>🍎 本地 Vision（默认）</h3>
+            <p>使用系统 <code>VNRecognizeTextRequest</code> 在本地识别文字，再将文字交给 LLM 翻译。无需联网、零 OCR 成本，隐私保护更好。</p>
+            <div class="tags"><span class="tag">离线可用</span><span class="tag">零成本</span><span class="tag">macOS 11+</span><span class="tag">印刷体准确率高</span></div>
+          </div>
+          <div class="mode-card">
+            <h3>👁️ 多模态 LLM</h3>
+            <p>将截图直接发送给支持视觉的模型，由其识别并翻译。复杂版式 / 图文混排效果更好，但按图计费且需联网。</p>
+            <div class="tags"><span class="tag">高精度</span><span class="tag">复杂版式</span><span class="tag">按量计费</span><span class="tag">需联网</span></div>
+          </div>
+          <div class="sw-row"><div class="sw-text"><b>识别语言</b><span>简体中文 / 英文（可自动检测）</span></div><span class="chip on">zh-Hans, en-US</span></div>
+          <div class="sw-row"><div class="sw-text"><b>屏幕录制权限</b><span>区域截图必需</span></div><span class="chip on">● 已授权</span></div>
+        </div>
+
+        <!-- General pane -->
+        <div class="pane" id="pane-general">
+          <h2>通用</h2>
+          <div class="desc">翻译语言、缓存与数据管理</div>
+          <div class="sw-row"><div class="sw-text"><b>目标语言</b><span>翻译结果的目标语言</span></div><select id="targetLang" style="font-family:inherit;font-size:13px;padding:6px 10px;border:1px solid var(--line);border-radius:7px"><option>简体中文</option><option>繁体中文</option><option>English</option><option>日本語</option></select></div>
+          <div class="sw-row"><div class="sw-text"><b>源语言自动检测</b><span>关闭后可手动指定源语言</span></div><div class="switch on" data-label="源语言自动检测"></div></div>
+          <div class="sw-row"><div class="sw-text"><b>结果缓存</b><span>相同内容命中缓存，省钱提速并减少数据外发</span></div><div class="switch on" data-label="结果缓存"></div></div>
+          <div class="sw-row"><div class="sw-text"><b>清除历史与缓存</b><span>本地数据不会上传，清除后不可恢复</span></div><button class="btn" id="clearData">清除…</button></div>
+        </div>
+
+        <!-- Permission pane -->
+        <div class="pane" id="pane-perm">
+          <h2>权限</h2>
+          <div class="desc">按需申请 · 一键跳转系统设置 · 未授权功能将禁用</div>
+          <div class="sw-row"><div class="sw-text"><b>辅助功能</b><span>读取选中文本（AXUIElement）与模拟 ⌘C</span></div><span class="chip on">● 已授权</span></div>
+          <div class="sw-row"><div class="sw-text"><b>屏幕录制</b><span>OCR 区域截图必需</span></div><span class="chip on">● 已授权</span></div>
+          <div class="sw-row"><div class="sw-text"><b>自动化</b><span>浏览器 AppleScript 取词（可选）</span></div><span class="chip">○ 未授权</span></div>
+          <div class="info-banner" style="margin-top:14px">隐私提示：选中的文本与屏幕截图会发送给你配置的第三方 LLM 服务。请自行评估其隐私政策；可配置本地 Ollama 接口实现零外发。</div>
+        </div>
+
+        <!-- Hotkey pane -->
+        <div class="pane" id="pane-hotkey">
+          <h2>快捷键</h2>
+          <div class="desc">全局快捷键 · 在任何 App 中均可唤起</div>
+          <div class="sw-row"><div class="sw-text"><b>划词翻译</b><span>选中文本后唤起翻译</span></div><span class="chip on">⌥ D</span></div>
+          <div class="sw-row"><div class="sw-text"><b>OCR 翻译</b><span>框选屏幕区域后识别翻译</span></div><span class="chip on">⌥ ⇧ S</span></div>
+          <div class="sw-row"><div class="sw-text"><b>关闭结果窗</b><span>也可点击窗外关闭</span></div><span class="chip">Esc</span></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ History Window ============ -->
+  <div class="window" id="win-history">
+    <div class="titlebar">
+      <div class="lights"><span class="light l-red"></span><span class="light l-yel"></span><span class="light l-grn"></span></div>
+      <div class="title">历史与收藏</div>
+    </div>
+    <div class="hist-toolbar">
+      <div class="tabs" id="histTabs">
+        <button class="active" data-tab="all">全部</button>
+        <button data-tab="fav">收藏</button>
+      </div>
+      <input class="search" id="histSearch" placeholder="🔎 搜索原文或译文…">
+    </div>
+    <div class="hist-list" id="histList"></div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="caption"><b>划译 · 交互原型</b>点击菜单栏「划译」展开菜单切换界面 · 设置中可拖拽排序接口 / 切换开关 / 收藏历史项</div>
+
+<script>
+(function(){
+  "use strict";
+  const $=(s,el=document)=>el.querySelector(s);
+  const $$=(s,el=document)=>[...el.querySelectorAll(s)];
+
+  /* ---------- Toast ---------- */
+  let toastTimer;
+  function toast(msg){
+    const t=$("#toast"); t.textContent=msg; t.classList.add("show");
+    clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"),1900);
+  }
+
+  /* ---------- Clock ---------- */
+  function tick(){
+    const d=new Date();
+    $("#clock").textContent=`周${"日一二三四五六"[d.getDay()]} ${d.getMonth()+1}月${d.getDate()}日 ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+  }
+  tick(); setInterval(tick,20000);
+
+  /* ---------- Dropdown & window switching ---------- */
+  const dd=$("#dropdown");
+  const wins={result:$("#win-result"),settings:$("#win-settings"),history:$("#win-history")};
+  function showWin(name,appMenuOpen){
+    Object.entries(wins).forEach(([k,w])=>w.classList.toggle("show",k===name));
+    if(!appMenuOpen) dd.classList.remove("show");
+    $("#appMenu").classList.toggle("open",!!appMenuOpen);
+  }
+  $("#appMenu").addEventListener("click",e=>{
+    e.stopPropagation(); dd.classList.toggle("show");
+    $("#appMenu").classList.toggle("open",dd.classList.contains("show"));
+  });
+  document.addEventListener("click",()=>{dd.classList.remove("show");$("#appMenu").classList.remove("open")});
+  dd.addEventListener("click",e=>e.stopPropagation());
+
+  $$(".dd-item").forEach(it=>it.addEventListener("click",()=>{
+    const act=it.dataset.act;
+    if(act==="result"||act==="resultOcr"){
+      const ocr=act==="resultOcr";
+      $("#resSource").textContent=ocr?"🔍 OCR 翻译":"✂️ 划词翻译";
+      $("#origText").textContent=ocr
+        ? "Welcome to our product. Scan the QR code to download the app."
+        : "The quick brown fox jumps over the lazy dog. Translation should feel natural and effortless, without breaking your flow.";
+      $("#transText").textContent=ocr
+        ? "欢迎使用我们的产品。扫描二维码下载应用。"
+        : "敏捷的棕色狐狸跳过了懒狗。翻译应当自然流畅，不打断你的工作流。";
+      showWin("result"); toast(ocr?"已按 ⌥⇧S 截取区域并翻译":"已按 ⌥D 取词并翻译");
+    } else if(act==="history"){showWin("history");renderHistory();}
+    else if(act==="settings"){showWin("settings");}
+    else if(act==="quit"){toast("已退出（原型演示，实际不会关闭）");}
+  }));
+  $("#mbHistory").addEventListener("click",e=>{e.stopPropagation();showWin("history");renderHistory()});
+  $("#mbSettings").addEventListener("click",e=>{e.stopPropagation();showWin("settings")});
+
+  /* ---------- result buttons ---------- */
+  $("#btnCopy").addEventListener("click",async()=>{
+    const text=$("#transText").textContent;
+    try{await navigator.clipboard.writeText(text)}catch(_){}
+    toast("已复制译文到剪贴板");
+  });
+  let fav=false;
+  function syncFav(){
+    $("#btnFav").classList.toggle("fav-on",fav);
+    $(".star",$("#btnFav")).textContent=fav?"★":"☆";
+    $("#favLabel").textContent=fav?"已收藏":"收藏";
+  }
+  $("#btnFav").addEventListener("click",()=>{fav=!fav;syncFav();toast(fav?"已加入收藏":"已取消收藏")});
+  $("#btnRetrans").addEventListener("click",()=>{
+    toast("正在重译…（尝试第 1/3 个接口）");
+    setTimeout(()=>{
+      $("#resLlm").textContent="备用接口 · Claude 3.5";
+      $("#resDegrade").style.display="inline-block";
+      toast("主接口超时，已降级到备用接口完成翻译");
+    },900);
+  });
+
+  /* ---------- settings tabs ---------- */
+  $$(".side-item").forEach(it=>it.addEventListener("click",()=>{
+    $$(".side-item").forEach(x=>x.classList.remove("active")); it.classList.add("active");
+    const p=it.dataset.pane;
+    $$(".pane").forEach(x=>x.classList.toggle("active",x.id==="pane-"+p));
+  }));
+
+  /* ---------- switches ---------- */
+  $$(".switch").forEach(sw=>sw.addEventListener("click",()=>{
+    sw.classList.toggle("on");
+    toast(`${sw.dataset.label||"开关"} 已${sw.classList.contains("on")?"开启":"关闭"}`);
+  }));
+
+  /* ---------- OCR segmented ---------- */
+  $$("#ocrSeg button").forEach(b=>b.addEventListener("click",()=>{
+    $$("#ocrSeg button").forEach(x=>x.classList.remove("active")); b.classList.add("active");
+    toast(b.dataset.mode==="local"?"已切换为：本地 Vision 优先":"已切换为：多模态 LLM 优先");
+  }));
+
+  /* ---------- LLM interfaces ---------- */
+  let llms=[
+    {id:1,name:"主力接口",base:"https://api.openai.com/v1",key:"sk-****************",model:"gpt-4o",on:true},
+    {id:2,name:"备用接口",base:"https://api.anthropic.com/v1",key:"sk-ant-************",model:"claude-3-5-sonnet",on:true},
+    {id:3,name:"本地 Ollama",base:"http://localhost:11434/v1",key:"ollama",model:"qwen2.5:7b",on:false}
+  ];
+  const list=$("#llmList");
+  function renderLlms(){
+    list.innerHTML="";
+    llms.forEach((m,i)=>{
+      const card=document.createElement("div");
+      card.className="llm-card"; card.draggable=true; card.dataset.id=m.id;
+      card.innerHTML=`
+        <div class="grip" title="拖拽排序">⠿</div>
+        <div class="prio ${m.on?"":"off"}">${i+1}</div>
+        <div class="llm-fields">
+          <div class="llm-top">
+            <span class="llm-name"></span>
+            <span class="chip ${m.on?"on":""}">${m.on?"启用":"停用"}</span>
+            <span class="spacer"></span>
+            <div class="switch ${m.on?"on":""}" data-role="toggle"></div>
+            <button class="mini" data-role="test" title="测试接口">↗</button>
+            <button class="mini" data-role="del" title="删除">✕</button>
+          </div>
+          <div class="field-row">
+            <label>名称<input data-f="name" value=""></label>
+            <label>model<input data-f="model" value=""></label>
+          </div>
+          <div class="field-row">
+            <label>baseURL<input data-f="base" value=""></label>
+            <label>apiKey<input data-f="key" value=""></label>
+          </div>
+        </div>
+        <div class="llm-ops">
+          <button class="mini" data-role="up" ${i===0?"disabled":""}>↑</button>
+          <button class="mini" data-role="down" ${i===llms.length-1?"disabled":""}>↓</button>
+        </div>`;
+      $(".llm-name",card).textContent=m.name;
+      $$("input",card).forEach(inp=>{
+        inp.value=m[inp.dataset.f];
+        inp.addEventListener("input",()=>{m[inp.dataset.f]=inp.value});
+      });
+      $(".switch",card).addEventListener("click",()=>{m.on=!m.on;renderLlms();toast(`${m.name} 已${m.on?"启用":"停用"}`)});
+      $("[data-role=up]",card).addEventListener("click",()=>{if(i>0){[llms[i-1],llms[i]]=[llms[i],llms[i-1]];renderLlms();toast("优先级已更新")}});
+      $("[data-role=down]",card).addEventListener("click",()=>{if(i<llms.length-1){[llms[i+1],llms[i]]=[llms[i],llms[i+1]];renderLlms();toast("优先级已更新")}});
+      $("[data-role=test]",card).addEventListener("click",()=>toast(`正在测试「${m.name}」…`));
+      $("[data-role=del]",card).addEventListener("click",()=>{llms=llms.filter(x=>x.id!==m.id);renderLlms();toast("接口已删除")});
+
+      card.addEventListener("dragstart",()=>card.classList.add("dragging"));
+      card.addEventListener("dragend",()=>{card.classList.remove("dragging");$$(".llm-card").forEach(c=>c.classList.remove("dragover"))});
+      card.addEventListener("dragover",e=>{e.preventDefault();card.classList.add("dragover")});
+      card.addEventListener("dragleave",()=>card.classList.remove("dragover"));
+      card.addEventListener("drop",e=>{
+        e.preventDefault();card.classList.remove("dragover");
+        const from=$$(".llm-card").indexOf($(".dragging"));
+        const to=i;
+        if(from<0||from===to)return;
+        const [moved]=llms.splice(from,1); llms.splice(to,0,moved); renderLlms(); toast("已拖拽调整调用优先级");
+      });
+      list.appendChild(card);
+    });
+  }
+  renderLlms();
+  $("#addLlm").addEventListener("click",()=>{
+    llms.push({id:Date.now(),name:"新接口",base:"https://api.example.com/v1",key:"sk-",model:"model-name",on:true});
+    renderLlms(); toast("已添加接口，请填写配置");
+  });
+
+  /* ---------- history ---------- */
+  let history=[
+    {t:"19:38",src:"划词",fav:true,orig:"The quick brown fox jumps over the lazy dog.",trans:"敏捷的棕色狐狸跳过了懒狗。",iface:"主力接口 · GPT-4o"},
+    {t:"19:31",src:"OCR",fav:false,orig:"Scan the QR code to download the app.",trans:"扫描二维码下载应用。",iface:"本地 Vision → 备用接口"},
+    {t:"19:12",src:"划词",fav:false,orig:"Translation should feel natural and effortless.",trans:"翻译应当自然流畅。",iface:"主力接口 · GPT-4o"},
+    {t:"18:56",src:"OCR",fav:true,orig:"Welcome to our product.",trans:"欢迎使用我们的产品。",iface:"多模态 LLM · GPT-4o"},
+    {t:"18:40",src:"划词",fav:false,orig:"Break free from the ordinary.",trans:"突破常规，释放潜能。",iface:"本地 Ollama · qwen2.5"}
+  ];
+  let histTab="all";
+  function renderHistory(){
+    const q=($("#histSearch").value||"").trim().toLowerCase();
+    const rows=history.filter(h=>(histTab!=="fav"||h.fav)&&(!q||h.orig.toLowerCase().includes(q)||h.trans.toLowerCase().includes(q)));
+    const box=$("#histList");
+    if(!rows.length){box.innerHTML='<div class="empty">暂无记录</div>';return}
+    box.innerHTML="";
+    rows.forEach(h=>{
+      const globalIdx=history.indexOf(h);
+      const el=document.createElement("div"); el.className="hist-item";
+      el.innerHTML=`
+        <div class="hist-main">
+          <div class="hist-head"><span class="hist-time">${h.t}</span><span class="src ${h.src==="OCR"?"ocr":""}">${h.src}</span></div>
+          <div class="hist-orig"></div><div class="hist-trans"></div><div class="hist-iface">${h.iface}</div>
+        </div>
+        <button class="fav-btn ${h.fav?"on":""}">${h.fav?"★":"☆"}</button>`;
+      $(".hist-orig",el).textContent=h.orig; $(".hist-trans",el).textContent=h.trans;
+      $(".fav-btn",el).addEventListener("click",()=>{
+        h.fav=!h.fav; toast(h.fav?"已加入收藏":"已取消收藏"); renderHistory(); if(globalIdx===0)syncFav();
+      });
+      box.appendChild(el);
+    });
+  }
+  $$("#histTabs button").forEach(b=>b.addEventListener("click",()=>{
+    $$("#histTabs button").forEach(x=>x.classList.remove("active")); b.classList.add("active");
+    histTab=b.dataset.tab; renderHistory();
+  }));
+  $("#histSearch").addEventListener("input",renderHistory);
+  renderHistory();
+
+  $("#clearData").addEventListener("click",()=>{history=[];renderHistory();toast("历史与缓存已清除")});
+
+  /* ---------- Esc closes result ---------- */
+  document.addEventListener("keydown",e=>{
+    if(e.key==="Escape"){
+      if(dd.classList.contains("show")){dd.classList.remove("show");return}
+      if(wins.result.classList.contains("show")){showWin("settings");toast("结果窗已关闭")}
+    }
+  });
+})();
+</script>
+</body>
+</html>

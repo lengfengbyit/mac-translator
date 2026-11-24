@@ -1,0 +1,37 @@
+# Swift / SwiftPM build output (large, machine-specific)
+.build/
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# macOS junk
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Build artifacts
+*.app/
+*.dmg
+*.pkg
+*.xcarchive
+
+# Signing material — never commit
+*.p12
+*.cer
+*.pem
+*.key
+*.mobileprovision
+
+# Local runtime data: settings.json contains plaintext API keys
+settings.json
+cache.json
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+mac_translator/
+
+# Logs / scratch
+*.log
+*.swp
