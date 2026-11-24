@@ -176,6 +176,22 @@ spctl -a -vv /Applications/MacTranslator.app   # 可选：校验公证结果
 
 公证需要 Apple Developer 账号与 app 专用密码（`APPLE_ID` / `APP_PASSWORD` / `TEAM_ID`）。验证：`spctl -a -vv MacTranslator.app` 期望 `accepted, source=Notarized Developer ID`。
 
+## 自动化发布（GitHub Actions）
+
+推送 `v*` 标签即触发 [`.github/workflows/release.yml`](../../.github/workflows/release.yml)：
+自动跑单元测试（best-effort，不阻塞）、分别编译 arm64 / x86_64 切片并 `lipo`
+合成通用 App、写入标签版本号，然后创建 GitHub Release，附上
+`MacTranslator-<版本>-universal.zip` 与 `.sha256`。无需任何密钥。
+
+```bash
+git tag v1.1.0
+git push origin v1.1.0     # 触发构建，几分钟后在 Releases 页面看到产物
+```
+
+当前 CI 产物为 ad-hoc 签名、未公证（与 v1.0.0 一致）。若后续配置了
+`SIGN_IDENTITY` / `APPLE_ID` / `APP_PASSWORD` / `TEAM_ID` 等 Secrets，
+可在工作流里追加 Developer ID 签名 + notarytool 公证步骤。
+
 ## 已知限制
 
 - ScreenCaptureKit 截图主路径要求 macOS 15.2+；更老系统回退到 `CGWindowListCreateImage`（该 API 在新版 SDK 已标记 obsolete）。

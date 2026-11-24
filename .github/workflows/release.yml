@@ -1,0 +1,115 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish:
+    name: Build universal app & publish release
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: meta
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "asset=MacTranslator-${version}-universal" >> "$GITHUB_OUTPUT"
+
+      # Best effort: XCTest needs a full Xcode install, which the local dev
+      # machine lacks. Non-blocking so a red test never holds a release hostage.
+      - name: Unit tests (best effort)
+        working-directory: MacTranslator
+        continue-on-error: true
+        run: swift test
+
+      # build.sh wipes build/ on every run, so each slice is moved into
+      # slices/ right after it is produced; the last step merges with lipo.
+      - name: Build arm64 slice
+        working-directory: MacTranslator
+        shell: bash
+        env:
+          ARCH: arm64
+          SIGN: adhoc
+        run: |
+          ./build.sh
+          mkdir -p slices
+          mv build/MacTranslator.app slices/MacTranslator-arm64.app
+
+      - name: Build x86_64 slice
+        working-directory: MacTranslator
+        shell: bash
+        env:
+          ARCH: x86_64
+          SIGN: adhoc
+        run: |
+          ./build.sh
+          mv build/MacTranslator.app slices/MacTranslator-x86_64.app
+
+      - name: Assemble universal app
+        working-directory: MacTranslator
+        shell: bash
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          cp -R slices/MacTranslator-arm64.app build/MacTranslator.app
+          lipo -create \
+            slices/MacTranslator-arm64.app/Contents/MacOS/MacTranslator \
+            slices/MacTranslator-x86_64.app/Contents/MacOS/MacTranslator \
+            -output build/MacTranslator.app/Contents/MacOS/MacTranslator
+          lipo -info build/MacTranslator.app/Contents/MacOS/MacTranslator
+          plutil -replace CFBundleShortVersionString -string "$VERSION" \
+            build/MacTranslator.app/Contents/Info.plist
+          plutil -lint build/MacTranslator.app/Contents/Info.plist
+          codesign --force --deep --sign - build/MacTranslator.app
+          codesign --verify --strict build/MacTranslator.app
+
+      - name: Package zip + checksum
+        working-directory: MacTranslator
+        shell: bash
+        env:
+          ASSET: ${{ steps.meta.outputs.asset }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          ditto -c -k --keepParent build/MacTranslator.app "${ASSET}.zip"
+          shasum -a 256 "${ASSET}.zip" > "${ASSET}.zip.sha256"
+          DIGEST="$(awk '{print $1}' "${ASSET}.zip.sha256")"
+          {
+            echo "## MacTranslator ${VERSION}"
+            echo
+            echo "通用安装包（Intel / Apple 芯片），ad-hoc 签名，未公证。"
+            echo
+            echo '```bash'
+            echo "mkdir mac-translator-${VERSION} && cd mac-translator-${VERSION}"
+            echo "unzip ../${ASSET}.zip"
+            echo 'open MacTranslator.app   # 或拖入 /Applications'
+            echo '```'
+            echo
+            echo "首次打开若被 Gatekeeper 拦截：\`xattr -cr MacTranslator.app\`"
+            echo
+            echo "SHA-256: \`${DIGEST}\`"
+          } > release-notes.md
+          ls -lh "${ASSET}.zip" "${ASSET}.zip.sha256"
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: MacTranslator ${{ steps.meta.outputs.version }}
+          body_path: MacTranslator/release-notes.md
+          files: |
+            MacTranslator/${{ steps.meta.outputs.asset }}.zip
+            MacTranslator/${{ steps.meta.outputs.asset }}.zip.sha256

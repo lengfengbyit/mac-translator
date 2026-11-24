@@ -38,7 +38,9 @@ if [ -z "$SDK" ] || [ -z "$SWIFTC" ] || [ -z "$PLUTIL" ] || [ -z "$CODESIGN" ]; 
   exit 1
 fi
 
-ARCH="$(uname -m)"
+# ARCH=arm64|x86_64 overrides the host architecture (used by CI to build a
+# universal binary from a single runner); defaults to the host arch.
+ARCH="${ARCH:-$(uname -m)}"
 case "$ARCH" in
   arm64)  TARGET="arm64-apple-macosx13.0" ;;
   x86_64) TARGET="x86_64-apple-macosx13.0" ;;
@@ -202,8 +204,17 @@ try archive.write(to: outDir.appendingPathComponent("\(modelName).mom"))
 print("generated \(outDir.path) with \(model.entities.count) entity/entities")
 SWIFT
 
+  # Build the helper for the HOST architecture, not $TARGET: it is executed
+  # locally to generate the .momd, and a cross-compiled helper cannot run
+  # natively (e.g. arm64 helper on an Intel host, or vice versa).
+  HOST_ARCH="$(uname -m)"
+  case "$HOST_ARCH" in
+    arm64)  HOST_TARGET="arm64-apple-macosx13.0" ;;
+    x86_64) HOST_TARGET="x86_64-apple-macosx13.0" ;;
+    *)      HOST_TARGET="$TARGET" ;;
+  esac
   "$SWIFTC" \
-    -target "$TARGET" \
+    -target "$HOST_TARGET" \
     -sdk "$SDK" \
     -swift-version 5 \
     -O \
